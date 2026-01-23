@@ -1,0 +1,57 @@
+// Pseudo-code decompilation of level1 binary vulnerability
+// Based on objdump disassembly analysis
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+// This is the vulnerable main function from level1 binary
+void vulnerable_main(void)
+{
+    char buffer[64];  // 0x10(%esp) in assembly
+
+    // Read up to 64 bytes, but gets() has NO bounds checking
+    // This is the vulnerability - input larger than 64 bytes overwrites the stack
+    gets(buffer);
+
+    // When function returns:
+    // 1. LEAVE instruction restores EBP
+    // 2. RET instruction pops return address and jumps to it
+    // If buffer is overflowed, the return address is overwritten
+}
+
+// To exploit this:
+// 1. Craft a payload that overflows the buffer
+// 2. Overwrite the return address with address of system() function
+// 3. Add exit() as the return address for system()
+// 4. Add pointer to "/bin/sh" string as argument to system()
+
+// Payload layout:
+// [64 bytes buffer] [4 bytes junk] [4 bytes return addr] [arg1] [arg2] [arg3]
+//     (padding A's)      (EBP)    (system address)   (exit) (ptr to /bin/sh)
+
+// When main() returns:
+// - RET pops: system() address → EIP
+// - system() executes with stack layout:
+//   - [return address] = exit()
+//   - [argument] = pointer to "/bin/sh"
+
+// System call: system("/bin/sh")
+// This should spawn an interactive shell
+
+// However, /bin/sh drops setuid privileges for security
+// This is why the exploit partially works but the final step (reading level2's .pass) fails
+
+// The file /home/user/level2/.pass is only readable by:
+// - level2 (owner)
+// - Users with sufficient privileges
+//
+// Even though level1 binary has setuid bit set for level2,
+// /bin/sh revokes those privileges when spawned.
+
+// Potential solutions:
+// 1. Use /bin/bash -p (preserve mode) if available
+// 2. Use ROP to call setuid(0) before executing shell
+// 3. Find alternative privilege escalation method
+// 4. Check if level1 binary source has additional setuid/setgid calls
