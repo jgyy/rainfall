@@ -1,0 +1,53 @@
+VM Setup Command:
+=================
+qemu-system-x86_64 -m 2048 -cdrom ./RainFall.iso -boot d -net nic,model=virtio -net user,hostfwd=tcp::4242-:4242
+
+Level 0 Walkthrough & Analysis Guide
+====================================
+
+EXTRACT BINARY FROM VM:
+=======================
+scp -p 4242 level0@localhost:/home/user/level0/level0 ./level0
+
+USING GHIDRA TO DECOMPILE:
+==========================
+1. Download: https://github.com/NationalSecurityAgency/ghidra/releases
+2. Extract and run: ./ghidra_*/ghidraRun
+3. File -> New Project, choose location and name
+4. File -> Import File (select the level0 binary)
+5. Click OK to start analysis, wait for completion
+6. In Functions panel (left), search for "main"
+7. Double-click "main" to view the function
+8. Open Decompiler: Window -> Decompiler
+9. C-like decompiled code appears in right panel
+
+COMMAND-LINE ALTERNATIVES:
+==========================
+Quick assembly view:
+  objdump -d level0 | grep -A 100 "<main>:"
+
+Interactive analysis (radare2):
+  r2 level0       # Start radare2
+  aa              # Analyze all
+  s main          # Seek to main
+  pdf             # Print disassembly
+  pdc             # Print C-like code
+  V               # Visual mode
+
+Find hardcoded strings:
+  strings level0 | grep -E "^[/a-zA-Z]"
+  hexdump -C level0
+
+KEY FINDINGS:
+=============
+- Magic number: 0x1a7 (423 in decimal)
+- Main function offset: 08048ec0
+- Vulnerability: Hardcoded numeric password check
+- On correct input: Executes /bin/sh with elevated privileges
+- On wrong input: Prints "No !" to stderr
+
+EXPLOITATION:
+=============
+./level0 423
+# Should spawn shell, then:
+cat /home/level1/.pass

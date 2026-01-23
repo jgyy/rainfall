@@ -1,0 +1,56 @@
+Level 0 Binary Analysis
+=======================
+
+Objdump of main function (08048ec0):
+objdump -d level0
+------------------------------------
+
+08048ec0 <main>:
+ 8048ec0:	55                   	push   %ebp
+ 8048ec1:	89 e5                	mov    %esp,%ebp
+ 8048ec3:	83 e4 f0             	and    $0xfffffff0,%esp
+ 8048ec6:	83 ec 20             	sub    $0x20,%esp
+ 8048ec9:	8b 45 0c             	mov    0xc(%ebp),%eax  ; Load argv into eax
+ 8048ecc:	83 c0 04             	add    $0x4,%eax       ; eax = &argv[1]
+ 8048ecf:	8b 00                	mov    (%eax),%eax     ; eax = argv[1]
+ 8048ed1:	89 04 24             	mov    %eax,(%esp)     ; Push argv[1] to stack
+ 8048ed4:	e8 37 08 00 00       	call   8049710 <atoi>  ; Call atoi to convert to int
+ 8048ed9:	3d a7 01 00 00       	cmp    $0x1a7,%eax     ; Compare with 0x1a7 (423)
+ 8048ede:	75 78                	jne    8048f58 <main+0x98>  ; Jump if not equal
+ 8048ee0:	c7 04 24 48 53 0c 08 	movl   $0x80c5348,(%esp)    ; /bin/sh path
+ 8048ee7:	e8 04 7d 00 00       	call   8050bf0 <__strdup>
+ 8048eec:	89 44 24 10          	mov    %eax,0x10(%esp)
+ 8048ef0:	c7 44 24 14 00 00 00 	movl   $0x0,0x14(%esp)
+ 8048ef7:	00
+ 8048ef8:	e8 83 b7 00 00       	call   8054680 <__getegid>
+ 8048efd:	89 44 24 1c          	mov    %eax,0x1c(%esp)
+ 8048f01:	e8 6a b7 00 00       	call   8054670 <__geteuid>
+ 8048f06:	89 44 24 18          	mov    %eax,0x18(%esp)
+ 8048f0a:	8b 44 24 1c          	mov    0x1c(%esp),%eax
+ 8048f0e:	89 44 24 08          	mov    %eax,0x8(%esp)
+ 8048f12:	8b 44 24 1c          	mov    0x1c(%esp),%eax
+ 8048f16:	89 44 24 04          	mov    %eax,0x4(%esp)
+ 8048f1a:	8b 44 24 1c          	mov    0x1c(%esp),%eax
+ 8048f1e:	89 04 24             	mov    %eax,(%esp)
+ 8048f21:	e8 da b7 00 00       	call   8054700 <__setresgid>  ; Set gid
+ 8048f26:	8b 44 24 18          	mov    0x18(%esp),%eax
+ 8048f2a:	89 44 24 08          	mov    %eax,0x8(%esp)
+ 8048f2e:	8b 44 24 18          	mov    0x18(%esp),%eax
+ 8048f32:	89 44 24 04          	mov    %eax,0x4(%esp)
+ 8048f36:	8b 44 24 18          	mov    0x18(%esp),%eax
+ 8048f3a:	89 04 24             	mov    %eax,(%esp)
+ 8048f3d:	e8 4e b7 00 00       	call   8054690 <__setresuid>  ; Set uid
+ 8048f42:	8d 44 24 10          	lea    0x10(%esp),%eax
+ 8048f46:	89 44 24 04          	mov    %eax,0x4(%esp)
+ 8048f4a:	c7 04 24 48 53 0c 08 	movl   $0x80c5348,(%esp)
+ 8048f51:	e8 ea b6 00 00       	call   8054640 <execv>  ; Execute shell
+
+Key Findings:
+- Magic number at offset 0x1a7 = 423 decimal
+- If argv[1] converted to int equals 423, shell is spawned with elevated privileges
+- The setresuid/setresgid calls use the effective uid/gid (from setuid binary)
+- Therefore, shell runs as level1 user
+
+Exploitation Steps:
+1. ./level0 423
+2. cat /home/user/level1/.pass
