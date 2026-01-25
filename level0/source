@@ -1,10 +1,3 @@
-/*
- * level0 - Decompiled Source Code
- * Binary Analysis Result from Ghidra
- *
- * Vulnerability: Hardcoded numeric password check
- * Magic Number: 0x1a7 (423 decimal)
- */
 undefined4 main(undefined4 param_1,int param_2)
 {
   int iVar1;
@@ -13,59 +6,29 @@ undefined4 main(undefined4 param_1,int param_2)
   __uid_t local_18;
   __gid_t local_14;
   
-  // atoi(): Convert argv[1] string to integer
+  // The atoi() function converts the initial portion of the string pointed to by nptr to int.
   iVar1 = atoi(*(char **)(param_2 + 4));
 
   // Check if converted value equals 0x1a7 (423 decimal)
   if (iVar1 == 0x1a7) {
-    // strdup(): Allocate copy of "/bin/sh" on heap
+    // The  strdup()  function returns a pointer to a new string which is a duplicate of the string s.
     local_20 = strdup("/bin/sh");
     local_1c = 0;
-    // getegid(): Get effective group ID of current process
+    // getuid() returns the real user ID of the calling process.
     local_14 = getegid();
-    // geteuid(): Get effective user ID of current process
+    // geteuid() returns the effective user ID of the calling process.
     local_18 = geteuid();
-    // setresgid(): Set real/effective/saved GID to current privileges
+    // setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process
     setresgid(local_14,local_14,local_14);
-    // setresuid(): Set real/effective/saved UID to current privileges
+    // setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
     setresuid(local_18,local_18,local_18);
     // execv(): Replace process with /bin/sh shell (never returns on success)
     execv("/bin/sh",&local_20);
   }
   else {
-    // fwrite(): Write "No !\n" (5 bytes) to stderr on wrong password
+    // The function fwrite() writes nmemb items of data, each size bytes long
+    // to the stream pointed to by stream, obtaining them from the location given by ptr.
     fwrite("No !\n",1,5,(FILE *)stderr);
   }
   return 0;
 }
-
-/*
- * HOW TO EXTRACT BINARY FROM VM:
- * ==============================
- * SCP (recommended):
- *   scp -p 4242 level0@localhost:/home/user/level0/level0 ./level0
- *
- * SSH method:
- *   ssh -p 4242 level0@localhost "cat /home/user/level0/level0" > level0 && chmod +x level0
- *
- * GHIDRA DECOMPILATION:
- * ====================
- * 1. Download: https://github.com/NationalSecurityAgency/ghidra/releases
- * 2. Run: ./ghidra_*/ghidraRun
- * 3. File -> New Project
- * 4. File -> Import File (select level0)
- * 5. Wait for analysis complete
- * 6. Functions panel -> search "main"
- * 7. Window -> Decompiler (view C code)
- *
- * COMMAND-LINE ALTERNATIVES:
- * ==========================
- * objdump -d level0 | grep -A 100 "<main>:"
- * strings level0 | head -20
- * hexdump -C level0 | head -50
- *
- * EXPLOITATION:
- * =============
- * ./level0 423
- * cat /home/level1/.pass
- */

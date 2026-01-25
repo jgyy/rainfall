@@ -1,5 +1,13 @@
 ## Level1 - Ret2libc Buffer Overflow Exploit
 
+### Extract Binary & Vulnerability Analysis
+
+EXTRACT BINARY FROM VM:
+```bash
+# Using level1 credentials from previous level
+scp -P 4242 level1@localhost:/home/user/level1/level1 ./level1
+```
+
 ### Vulnerability Analysis
 - **Binary**: level1 (32-bit ELF, setuid level2)
 - **Vulnerability**: Stack buffer overflow in main() via gets()
