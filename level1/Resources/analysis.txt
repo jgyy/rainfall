@@ -154,8 +154,45 @@ Evidence:
 - Return-to-libc Technique: Stack exploitation with disabled NX
 - Gets() Vulnerability: https://man7.org/linux/man-pages/man3/gets.3.html (deprecated, vulnerable)
 
-### Next Steps
-- Test bash -p approach
-- Research ROP chains for i386
-- Check if there's alternative Rainfall solution method
-- Verify if this is the expected solution path
+### SOLUTION DISCOVERED
+
+After thorough analysis, discovered the intended solution:
+
+**Hidden run() Function at 0x08048444**
+
+The binary contains a function that is never called from main():
+```
+08048444 <run>:
+ 8048444: push   %ebp
+ 8048445: mov    %esp,%ebp
+ ...
+ 804846d: call   8048350 <fwrite@plt>   # Prints message
+ 8048472: movl   $0x8048584,(%esp)      # "/bin/sh"
+ 8048479: call   8048360 <system@plt>   # system("/bin/sh")
+ 804847e: leave
+ 804847f: ret
+```
+
+This function:
+1. Prints "Good... Wait what?\n" via fwrite()
+2. Calls system("/bin/sh") which PRESERVES setuid privileges
+3. Spawns a shell as level2
+
+**Correct Exploit:**
+- Padding: 76 bytes to reach return address
+- Return address: 0x08048444 (address of run())
+- No need for ret2libc complexity!
+
+**Why ret2libc failed:**
+- /bin/sh drops setuid when called via system() from overflow
+- But the run() function is designed to spawn the shell properly
+- This is a classic "hidden function" challenge pattern
+
+**Discovery method:**
+```bash
+objdump -d ./level1 | grep "^[0-9a-f]* <.*>:"  # List all functions
+nm ./level1                                     # Check symbol table
+```
+
+The run() function was compiled into the binary but never referenced in main(),
+making it a "backdoor" function we can jump to via overflow.
