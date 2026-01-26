@@ -1,0 +1,28 @@
+void p(void)
+{
+  char buffer[76];
+  unsigned int return_address;
+
+  // Allocate 104 bytes, buffer at EBP-0x4c
+  gets(buffer);  // VULNERABLE: no bounds checking
+
+  // Get the return address from the stack
+  return_address = *(unsigned int*)(buffer + 80);  // Approximation
+
+  // Check if return address is in libc range (0xb0000000-0xbfffffff)
+  if ((return_address & 0xb0000000) == 0xb0000000) {
+    printf("(%p)\n", return_address);
+    exit(1);  // Blocked!
+  }
+
+  // If we get here, return address is NOT in libc range
+  puts(buffer);
+  strdup(buffer);
+  return;  // Return to wherever the return address points
+}
+
+void main(void)
+{
+  p();
+  return;
+}
