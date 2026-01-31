@@ -1,24 +1,28 @@
 void p(void)
 {
-  char buffer[76];
-  unsigned int return_address;
+  uint unaff_retaddr;
+  char local_50 [76];
 
-  // Allocate 104 bytes, buffer at EBP-0x4c
-  gets(buffer);  // VULNERABLE: no bounds checking
-
-  // Get the return address from the stack
-  return_address = *(unsigned int*)(buffer + 80);  // Approximation
-
-  // Check if return address is in libc range (0xb0000000-0xbfffffff)
-  if ((return_address & 0xb0000000) == 0xb0000000) {
-    printf("(%p)\n", return_address);
-    exit(1);  // Blocked!
+  // fflush() forces a write of all user-space buffered data for the given
+  // output or update stream via the stream's underlying write function
+  fflush(stdout);
+  // gets()  reads  a  line from stdin into the buffer pointed
+  // to by s until either a terminating newline or EOF
+  gets(local_50);
+  if ((unaff_retaddr & 0xb0000000) == 0xb0000000) {
+    // format and print data
+    printf("(%p)\n",unaff_retaddr);
+                    /* WARNING: Subroutine does not return */
+    // exit() function causes normal process termination
+    // and the least significant byte of status
+    _exit(1);
   }
-
-  // If we get here, return address is NOT in libc range
-  puts(buffer);
-  strdup(buffer);
-  return;  // Return to wherever the return address points
+  // puts() writes the string s and a trailing newline to stdout.
+  puts(local_50);
+  // strdup()  function returns a pointer to a new
+  // string which is a duplicate of the string s.
+  strdup(local_50);
+  return;
 }
 
 void main(void)

