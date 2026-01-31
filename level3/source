@@ -1,0 +1,14 @@
+void	v()
+{
+	char	buffer[512];
+
+	fgets(buffer, sizeof(buffer), stdin);
+	printf(buffer);
+	fflush(stdout);
+}
+
+void	main()
+{
+	v();
+	exit(0);
+}
