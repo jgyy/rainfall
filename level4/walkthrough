@@ -1,0 +1,125 @@
+## Level4 - Format String Vulnerability (Advanced)
+
+### Challenge Summary
+Binary reads 512 bytes from stdin, passes to printf() without format string validation, then checks a global variable for a specific value to trigger system("/bin/cat /home/user/level5/.pass").
+
+### Vulnerability
+- Function `p()` contains: `printf(buffer)` where buffer is user input
+- Format string vulnerability allowing arbitrary memory reads/writes
+
+### Target Objective
+Write value 0x1025544 to memory address 0x8049810
+- If this check passes: binary calls `system("/bin/cat /home/user/level5/.pass")`
+- If check fails: binary exits without executing system()
+
+### Binary Analysis
+
+#### Stack Layout
+Running a leak payload reveals address positions on stack:
+- Offset %1: Frame size or library address
+- ...
+- Offset %12: 0x8049810 (our target address) appears here
+- Offset %13: 0x8049812 (target + 2) appears here
+
+####  Key Assembly (function n):
+```asm
+8048460: mov    0x8049804,%eax          ; Load FP
+804845a: sub    $0x218,%esp             ; Allocate 512-byte buffer
+804847f: call   8048444 <p>             ; Call p(buffer)
+804848d: mov    0x8049810,%eax          ; Load check value from 0x8049810
+8048492: cmp    $0x1025544,%eax         ; Compare with 0x1025544
+8048497: jne    80484a5                 ; If not equal, skip system()
+8048499: call   8048360 <system@plt>    ; Call system() with "/bin/cat /home/user/level5/.pass"
+```
+
+### The Value 0x1025544
+
+This is the magic value that must be written to 0x8049810.
+
+In little-endian format (as stored in memory):
+- Bytes: 0x44 0x55 0x02 0x01
+- Decimal: 16930372
+
+### Exploitation Strategy
+
+#### Method 1: Using %hn (2-byte writes)
+Write the 4-byte value as two 2-byte words:
+- Write 0x5544 (21828 decimal) to 0x8049810 using %12$hn
+- Write 0x0102 (258 decimal) to 0x8049812 using %13$hn
+
+##### Problem:
+%hn writes the TOTAL character count printed so far. You can't easily write different values to different addresses this way since the count keeps increasing.
+
+#### Method 2: Alternative Approaches
+
+**Option A: Environment Variables**
+- Set LD_PRELOAD or other environment variables to influence memory
+- May not directly apply to this challenge
+
+**Option B: Indirect Method**
+- Look for other writeable memory locations
+- Find ROP gadgets or other bypass techniques
+
+### Expected Payload Structure
+
+For a 21828-byte write followed by bash shell interaction:
+```
+[4-byte address pointer: 0x8049810]
+[4-byte address pointer: 0x8049812]
+[21820 bytes padding]
+[format string: %12$hn]
+[interactive shell input to execute commands]
+```
+
+### Known Issues
+- Large byte count (21828) makes payload size impractical
+- Shell interaction may fail if binary doesn't properly spawn interactive shell
+- Multiple %hn writes in sequence require careful orchestration of byte counts
+
+### Alternative Hypothesis
+
+The value 0x1025544 might encode something specific:
+- Could be an XOR key, authentication token, or magic number
+- Might represent ASCII values or packed structures
+- The check might be exploitable through a different code path
+
+### Source Code Reconstruction
+
+```c
+void p(char *buffer) {
+    printf(buffer);  // FORMAT STRING VULNERABILITY
+}
+
+void n() {
+    char buffer[512];
+    fgets(buffer, sizeof(buffer), stdin);
+    p(buffer);
+
+    if (*(int *)0x8049810 == 0x1025544) {
+        system("/bin/cat /home/user/level5/.pass");
+    }
+}
+
+int main() {
+    n();
+    return 0;
+}
+```
+
+### Testing Methodology
+
+1. Leak stack to find address positions
+2. Test small %hn write (e.g., 100 bytes) to verify write capability
+3. Craft final payload with correct byte counts
+4. Use bash for interactive shell to execute cat command
+
+### Further Analysis Needed
+
+- Test if partial writes (wrong byte counts) cause crashes or side effects
+- Check if there are other entry points or code paths
+- Explore alternative exploitation vectors
+- Review heap/BSS memory layout for other writable targets
+
+### Conclusion
+
+Level 4 requires mastering format string exploitation with large byte-count writes. The challenge lies in orchestrating multiple %hn writes with precise byte counts, or finding an alternative exploitation path that bypasses the 0x1025544 check.
