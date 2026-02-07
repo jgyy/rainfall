@@ -1,0 +1,68 @@
+## Level 5 - Format String Vulnerability (GOT Overwrite)
+
+### Challenge Summary
+Binary reads 512 bytes from stdin, passes to printf() as format string, then calls exit(1).
+
+### Vulnerability
+- Function `n()` contains: `printf(buffer)` where buffer is user input
+- Format string vulnerability allowing arbitrary memory reads/writes
+- No memory check before exit - must use different exploitation technique
+
+### Target Objective
+Read `/home/user/level6/.pass` to get the level 6 password
+
+### Key Difference from Level 4
+- Level 4: Checked a memory value to decide whether to call system()
+- Level 5: Always calls exit(1) after printf() - cannot redirect execution flow that way
+
+### Exploitation Strategy: GOT Overwrite
+
+**Goal**: Modify the GOT (Global Offset Table) entry for a function to redirect execution
+
+**Approach**: Overwrite `exit@got` to point to `system` instead
+- When the program calls `exit(1)`, it will actually call `system(1)`
+- But that's not quite right - we need system("/bin/cat /home/user/level6/.pass")
+
+**Alternative Approach**: Modify `printf@got` or use ROP gadgets
+- Or leak addresses using %x, %s format specifiers
+
+### Binary Analysis
+
+#### Key Assembly (function n):
+```asm
+080484c2 <n>:
+080484c2:       55                      push   %ebp
+080484c3:       89 e5                   mov    %esp,%ebp
+080484c5:       83 ec 18                sub    $0x218,%esp
+080484cb:       8b 05 48 98 04 08       mov    0x8049848,%eax     ; Load stdin
+080484d0:       89 44 24 08             mov    %eax,0x8(%esp)
+080484d4:       c7 44 24 04 00 02 00    movl   $0x200,0x4(%esp)   ; Size: 512
+080484dc:       00
+080484dc:       8d 85 f8 fd ff ff       lea    -0x208(%ebp),%eax  ; Buffer
+080484e2:       89 04 24                mov    %eax,(%esp)
+080484e5:       e8 b6 fe ff ff          call   80483a0 <fgets@plt>
+080484ea:       8d 85 f8 fd ff ff       lea    -0x208(%ebp),%eax  ; Buffer
+080484f0:       89 04 24                mov    %eax,(%esp)
+080484f3:       e8 88 fe ff ff          call   8048380 <printf@plt>
+080484f8:       c7 04 24 01 00 00 00    movl   $0x1,(%esp)        ; exit(1)
+080484ff:       e8 8c fe ff ff          call   80483d0 <exit@plt>
+```
+
+### Next Steps
+
+1. **Leak addresses**: Use format strings to find addresses of functions and GOT entries
+2. **Identify GOT locations**: Find where exit@got and system are
+3. **Calculate format string offsets**: Determine which %offset$ points to user buffer
+4. **Craft exploit payload**: Write address to GOT to redirect exit() call
+5. **Alternative if GOT overwrite fails**: Use other format string techniques
+
+### Investigation Needed
+
+- Find exact GOT entries and their addresses
+- Determine format string offsets to control what we write
+- Verify if exit redirection will work or if we need ROP/shellcode
+- Test exploit on remote level5 binary
+
+### Status: READY FOR EXPLOITATION
+
+The format string vulnerability is clear. Need to determine the best exploitation path.
