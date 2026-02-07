@@ -1,0 +1,29 @@
+void p(char *param_1)
+{
+  // printf - format and print data
+  printf(param_1);
+  return;
+}
+
+void n(void)
+{
+  char local_20c [520];
+ 
+  // fgetc() reads the next character from stream and
+  // returns it as an unsigned char cast to an int
+  fgets(local_20c,0x200,stdin);
+  p(local_20c);
+  if (m == 0x1025544) {
+    // The system() library function behaves as if it used fork(2)
+    // to create a child process that executed the shell command
+    system("/bin/cat /home/user/level5/.pass");
+  }
+  return;
+}
+
+void main(void)
+{
+  n();
+  return;
+}
+
