@@ -1,0 +1,20 @@
+void m(void)
+{
+    puts("Nope");
+    return;
+}
+
+void main(int argc, char **argv)
+{
+    char    *buf;
+    char    (**ptr)();
+
+    buf = malloc(0x40);     // Allocate 64-byte buffer
+    ptr = malloc(0x4);      // Allocate 4-byte function pointer
+
+    *ptr = m;               // Initialize pointer to function m()
+    strcpy(buf, argv[1]);   // VULNERABLE: No bounds check!
+    (*ptr)();               // Call the function pointer
+
+    return;
+}
