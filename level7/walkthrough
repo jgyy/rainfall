@@ -101,12 +101,42 @@ The address in little-endian format is: `\xf4\x84\x04\x08`
 4. Function m() prints the password from buffer 0x8049960
 5. Capture the output to get level 8 password
 
-### Status: IN PROGRESS
+### Key Insight: Heap Structure
 
-The heap buffer overflow is confirmed (crashes at 21+ bytes), but the exact offset and payload structure to successfully jump to function m() is still being determined.
+The program allocates structures in this order:
+1. Structure1 (8 bytes): {id=1, buffer_ptr}
+2. Buffer1 (8 bytes): target of strcpy(argv[1])
+3. Structure3 (8 bytes): {id=2, buffer_ptr}
+4. Buffer3 (8 bytes): target of strcpy(argv[2])
 
-### Next Steps
-- Test 20-byte payloads with function m() address at different positions
-- Try using both argv arguments in coordinated overflow
-- Consider alternative function pointer locations in heap structure
-- May need to align with 4-byte boundaries for pointer writes
+When overflowing Buffer1 (8 bytes max before crash), we can corrupt Structure3's layout. The 20-byte safe limit suggests critical metadata at byte 21.
+
+### Critical Discovery
+
+Function m() must be called through an indirect mechanism since it's not explicitly called in the source code. Possible mechanisms:
+1. **Destructor chain**: Global objects with destructors
+2. **Function pointers in structures**: Called when structures are cleaned up
+3. **Atexit handlers**: Registered cleanup functions
+
+The most likely scenario: The structures themselves have function pointers (in the first 4 bytes or elsewhere) that get invoked during cleanup.
+
+### Exploitation Approach
+
+Since we can overflow 8 bytes safely and have 20-byte limit:
+1. **Buffer1 overflow (argv[1])**: Overflow structure3's buffer pointer with m() address
+2. **Buffer3 overflow (argv[2])**: Place m() address in a specific offset
+3. **Coordinated attack**: Use both argv to trigger m() call with correct arguments
+
+The goal: Make m() execute with a pointer to the password buffer as its argument, causing printf() to leak the password.
+
+### Testing Payloads
+
+Best candidates based on 20-byte limit:
+- Offset 4: `AAAA` + `\xf4\x84\x04\x08` (8 bytes, safe)
+- Offset 8: `AAAAAAAA` + `\xf4\x84\x04\x08` (12 bytes, safe)
+- Offset 12: `AAAAAAAAAAAA` + `\xf4\x84\x04\x08` (16 bytes, safe)
+- Offset 16: `AAAAAAAAAAAAAAAA` + `\xf4\x84\x04\x08` (20 bytes, max safe)
+
+### Status: TESTING IN PROGRESS
+
+Need to empirically test which offset and combination of argv[1]/argv[2] successfully triggers m() execution.

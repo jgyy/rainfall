@@ -43,4 +43,4 @@ Find hardcoded strings:
 ## EXPLOITATION:
 ./level0 423
 # Should spawn shell, then:
-cat /home/level1/.pass
+cat /home/user/level1/.pass
