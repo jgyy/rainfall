@@ -59,5 +59,4 @@ Find hardcoded strings:
 
 ### EXPLOITATION:
 ./level0 423
-# spawn empty shell, type this
-cat /home/user/level1/.pass
+$ cat /home/user/level1/.pass

