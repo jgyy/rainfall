@@ -1,16 +1,16 @@
-Level 00 │ Caesar Cipher / Encoding            │ Find files owned by user and decrypt ROT cipher to extract password
-Level 01 │ Password Hash Cracking              │ Use John the Ripper to crack DES-based /etc/passwd hash
-Level 02 │ Network Protocol Analysis           │ Extract login credentials from PCAP file using tcpflow
-Level 03 │ PATH Manipulation + SetUID          │ Override PATH environment variable to execute custom binary with elevated privileges
-Level 04 │ Command Injection (Perl CGI)        │ Inject commands via URL parameter in Perl CGI script with SetUID
-Level 05 │ Privilege Escalation via Cron       │ Write executable script to world-writable directory executed by scheduled cron job
-Level 06 │ PHP Code Injection (/e modifier)    │ Exploit PHP's preg_replace with /e flag to execute arbitrary code
-Level 07 │ Environment Variable Injection      │ Modify LOGNAME environment variable to inject shell commands into system() call
-Level 08 │ Symlink Following                   │ Bypass string filtering using symlinks to access protected files
-Level 09 │ Cryptanalysis + Reverse Engineering │ Reverse-engineer and break a byte rotation cipher
-Level 10 │ TOCTOU Race Condition               │ Exploit timing gap between access() and open() calls using symlink switching
-Level 11 │ Lua Script Command Injection        │ Inject shell commands via io.popen() in Lua script
-Level 12 │ Wildcard + Perl Injection           │ Use wildcards and backticks in Perl egrep to bypass input filtering
-Level 13 │ Binary Patching (Ghidra)            │ Use Ghidra to patch binary and bypass UID validation check
-Level 14 │ Binary Patching + Anti-Debug Bypass │ Use Ghidra to patch binary, bypass ptrace anti-debugging, and modify UID check
+Level 00: Find files owned by user and decrypt ROT cipher to extract password
+Level 01: Use John the Ripper to crack DES-based /etc/passwd hash
+Level 02: Extract login credentials from PCAP file using tcpflow
+Level 03: Override PATH environment variable to execute custom binary with elevated privileges
+Level 04: Inject commands via URL parameter in Perl CGI script with SetUID
+Level 05: Write executable script to world-writable directory executed by scheduled cron job
+Level 06: Exploit PHP's preg_replace with /e flag to execute arbitrary code
+Level 07: Modify LOGNAME environment variable to inject shell commands into system() call
+Level 08: Bypass string filtering using symlinks to access protected files
+Level 09: Reverse-engineer and break a byte rotation cipher
+Level 10: Exploit timing gap between access() and open() calls using symlink switching
+Level 11: Inject shell commands via io.popen() in Lua script
+Level 12: Use wildcards and backticks in Perl egrep to bypass input filtering
+Level 13: Use Ghidra to patch binary and bypass UID validation check
+Level 14: Use Ghidra to patch binary, bypass ptrace anti-debugging, and modify UID check
 

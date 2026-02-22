@@ -1,15 +1,29 @@
-# Level 0 Walkthrough & Analysis Guide
+## Level 0 Walkthrough & Analysis Guide
 
-## VM Setup Command:
+### VM Setup Command:
 qemu-system-x86_64 -m 2048 -cdrom ./RainFall.iso -boot d -net nic,model=virtio -net user,hostfwd=tcp::4242-:4242
 
-## EXTRACT BINARY FROM VM:
+### EXTRACT BINARY FROM VM:
 scp -p 4242 level0@localhost:/home/user/level0/level0 ./level0
 
-## TROUBLESHOOTING SSH ISSUES
+### TROUBLESHOOTING SSH ISSUES
 ssh-keygen -f '/home/jegoh/.ssh/known_hosts' -R '[localhost]:4242'
 
-## USING GHIDRA TO DECOMPILE:
+### Settings
+GCC stack protector support:            Enabled
+Strict user copy checks:                Disabled
+Restrict /dev/mem access:               Enabled
+Restrict /dev/kmem access:              Enabled
+grsecurity / PaX: No GRKERNSEC
+Kernel Heap Hardening: No KERNHEAP
+System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX enabled    No PIE          No RPATH   No RUNPATH   /home/user/level0/level0
+
+### Notes
+Stack and heap memory cannot be executed as code. (NX enabled)
+
+### USING GHIDRA TO DECOMPILE:
 1. Download: https://github.com/NationalSecurityAgency/ghidra/releases
 2. Extract and run: ./ghidra_*/ghidraRun
 3. File -> New Project, choose location and name
@@ -20,7 +34,7 @@ ssh-keygen -f '/home/jegoh/.ssh/known_hosts' -R '[localhost]:4242'
 8. Open Decompiler: Window -> Decompiler
 9. C-like decompiled code appears in right panel
 
-## COMMAND-LINE ALTERNATIVES:
+### COMMAND-LINE ALTERNATIVES:
 Quick assembly view:
   objdump -d level0 | grep -A 100 "<main>:"
 
@@ -36,14 +50,14 @@ Find hardcoded strings:
   strings level0 | grep -E "^[/a-zA-Z]"
   hexdump -C level0
 
-## KEY FINDINGS:
+### KEY FINDINGS:
 - Magic number: 0x1a7 (423 in decimal)
 - Main function offset: 08048ec0
 - Vulnerability: Hardcoded numeric password check
 - On correct input: Executes /bin/sh with elevated privileges
 - On wrong input: Prints "No !" to stderr
 
-## EXPLOITATION:
+### EXPLOITATION:
 ./level0 423
-# Should spawn shell, then:
+# spawn empty shell, type this
 cat /home/user/level1/.pass
