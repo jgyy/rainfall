@@ -1,20 +1,23 @@
-void n(void)
+#include <stdio.h>
+#include <stdlib.h>
+
+void o(void)
 {
-    char local_20c [520];
-
-    // Read user input (up to 512 bytes)
-    fgets(local_20c, 0x200, stdin);
-
-    // VULNERABLE: Call printf with user input as format string
-    printf(local_20c);
-
-    // Exit after printing
-    exit(1);
-    return;
+    system("/bin/sh");
+    _exit(1);
 }
 
-void main(void)
+void n(void)
+{
+    char buf[520];
+
+    fgets(buf, 512, stdin);
+    printf(buf);
+    exit(1);
+}
+
+int main(void)
 {
     n();
-    return;
+    return 0;
 }

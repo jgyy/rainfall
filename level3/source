@@ -1,27 +1,23 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+int m = 0;
+
 void v(void)
 {
-  char local_20c [520];
- 
-  // fgetc() reads the next character from stream and
-  // returns it as an unsigned char cast to an int
-  fgets(local_20c,0x200,stdin);
-  // printf - format and print data
-  printf(local_20c);
-  if (m == 0x40) {
-    // fwrite() writes nmemb items of data, each size bytes long,
-    // to the stream pointed to by stream
-    fwrite("Wait what?!\n",1,0xc,stdout);
-    // system() library function behaves as if it used fork(2)
-    // to create a child process that executed the shell
-    // command specified in command using execl(3)
-    system("/bin/sh");
-  }
-  return;
+    char buf[520];
+
+    fgets(buf, 512, stdin);
+    printf(buf);
+
+    if (m == 64) {
+        fwrite("Wait what?!\n", 1, 12, stdout);
+        system("/bin/sh");
+    }
 }
 
-
-void main(void)
+int main(void)
 {
-  v();
-  return;
+    v();
+    return 0;
 }

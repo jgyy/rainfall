@@ -1,34 +1,26 @@
-undefined4 main(undefined4 param_1,int param_2)
-{
-  int iVar1;
-  char *local_20;
-  undefined4 local_1c;
-  __uid_t local_18;
-  __gid_t local_14;
-  
-  // The atoi() function converts the initial portion of the string pointed to by nptr to int.
-  iVar1 = atoi(*(char **)(param_2 + 4));
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-  // Check if converted value equals 0x1a7 (423 decimal)
-  if (iVar1 == 0x1a7) {
-    // The  strdup()  function returns a pointer to a new string which is a duplicate of the string s.
-    local_20 = strdup("/bin/sh");
-    local_1c = 0;
-    // getuid() returns the real user ID of the calling process.
-    local_14 = getegid();
-    // geteuid() returns the effective user ID of the calling process.
-    local_18 = geteuid();
-    // setresgid() sets the real GID, effective GID, and saved set-group-ID of the calling process
-    setresgid(local_14,local_14,local_14);
-    // setresuid() sets the real user ID, the effective user ID, and the saved set-user-ID of the calling process.
-    setresuid(local_18,local_18,local_18);
-    // execv(): Replace process with /bin/sh shell (never returns on success)
-    execv("/bin/sh",&local_20);
-  }
-  else {
-    // The function fwrite() writes nmemb items of data, each size bytes long
-    // to the stream pointed to by stream, obtaining them from the location given by ptr.
-    fwrite("No !\n",1,5,(FILE *)stderr);
-  }
-  return 0;
+int main(int argc, char **argv)
+{
+    int  n;
+    char *args[2];
+    uid_t euid;
+    gid_t egid;
+
+    n = atoi(argv[1]);
+    if (n == 423) {
+        args[0] = strdup("/bin/sh");
+        args[1] = NULL;
+        egid = getegid();
+        euid = geteuid();
+        setresgid(egid, egid, egid);
+        setresuid(euid, euid, euid);
+        execv("/bin/sh", args);
+    } else {
+        fwrite("No !\n", 1, 5, stderr);
+    }
+    return 0;
 }

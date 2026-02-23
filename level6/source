@@ -1,20 +1,28 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+void n(void)
+{
+    system("/bin/cat /home/user/level7/.pass");
+}
+
 void m(void)
 {
     puts("Nope");
-    return;
 }
 
-void main(int argc, char **argv)
+int main(int argc, char **argv)
 {
     char    *buf;
-    char    (**ptr)();
+    void    (**fp)(void);
 
-    buf = malloc(0x40);     // Allocate 64-byte buffer
-    ptr = malloc(0x4);      // Allocate 4-byte function pointer
+    buf = malloc(64);
+    fp  = malloc(4);
 
-    *ptr = m;               // Initialize pointer to function m()
-    strcpy(buf, argv[1]);   // VULNERABLE: No bounds check!
-    (*ptr)();               // Call the function pointer
+    *fp = m;
+    strcpy(buf, argv[1]);
+    (*fp)();
 
-    return;
+    return 0;
 }

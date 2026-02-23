@@ -1,8 +1,16 @@
-void main(void)
-{
-  char local_50 [76];
+#include <stdio.h>
+#include <stdlib.h>
 
-  // gets() reads a line from stdin into the buffer pointed to by s until either a terminating newline or EOF
-  gets(local_50);
-  return;
+void run(void)
+{
+    fwrite("Good... Wait what?\n", 1, 19, stdout);
+    system("/bin/sh");
+}
+
+int main(void)
+{
+    char buf[64];
+
+    gets(buf);
+    return 0;
 }
