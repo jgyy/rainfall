@@ -1,0 +1,33 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+void p(char *dest, char *prompt)
+{
+    char buf[4096];
+    puts(prompt);
+    read(0, buf, 4096);
+    *strchr(buf, '\n') = '\0';
+    strncpy(dest, buf, 20);
+}
+
+void pp(char *dest)
+{
+    char buf1[20];
+    char buf2[20];
+    p(buf1, " - ");
+    p(buf2, " - ");
+    strcpy(dest, buf1);
+    // appends " " at the end of dest
+    dest[strlen(dest)] = ' ';
+    strcat(dest, buf2);
+}
+
+int main()
+{
+    char buf[42];
+    pp(buf);
+    puts(buf);
+    return 0;
+}

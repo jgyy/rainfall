@@ -15,6 +15,9 @@ No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RU
 ### Notes
 Stack and heap memory CAN be executed (NX disabled)
 
+### Accessing VM
+sshpass -p `cat level0/pass` ssh level1@localhost -p 4242
+
 ### Vulnerability
 - **Binary**: level1 (32-bit ELF, setuid level2)
 - **Flaw**: gets() buffer overflow with no bounds checking

@@ -3,6 +3,9 @@
 ### VM Setup Command:
 qemu-system-x86_64 -m 2048 -cdrom ./RainFall.iso -boot d -net nic,model=virtio -net user,hostfwd=tcp::4242-:4242
 
+### Accessing VM
+sshpass -p level0 ssh level0@localhost -p 4242
+
 ### EXTRACT BINARY FROM VM:
 scp -p 4242 level0@localhost:/home/user/level0/level0 ./level0
 

