@@ -24,7 +24,7 @@ sshpass -p `cat level0/pass` ssh level1@localhost -p 4242
 - **Protections**: NX disabled, ASLR disabled
 
 ### Key Addresses
-- Hidden run(): 0x08048444 → calls system("/bin/sh")
+- Hidden run(): 0x08048444 -> calls system("/bin/sh")
 - Buffer size: 64 bytes, padding needed: 76 bytes (64 + alignment)
 
 ### Exploit Strategy

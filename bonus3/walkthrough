@@ -13,15 +13,15 @@ int main(int argc, char **argv)
     memset(buf, 0, sizeof(buf));
     if (!f || argc != 2) return -1;
 
-    fread(buf, 1, 66, f);           // read first 66 bytes of password → buf[0..65]
-    buf[65] = '\0';                  // hard null-terminate
+    fread(buf, 1, 66, f);
+    buf[65] = '\0';
 
-    buf[atoi(argv[1])] = '\0';      // LOGIC BUG: null-terminate at user-chosen offset
+    buf[atoi(argv[1])] = '\0';
 
-    fread(buf + 66, 1, 65, f);      // read next 65 bytes → buf[66..130]
+    fread(buf + 66, 1, 65, f);
     fclose(f);
 
-    if (strcmp(buf, argv[1]) == 0)  // compare buf with argv[1]
+    if (strcmp(buf, argv[1]) == 0)
         execl("/bin/sh", "sh", NULL);
     else
         puts(buf + 66);

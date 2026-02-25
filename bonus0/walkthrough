@@ -14,10 +14,10 @@ Three functions:
 **pp(output):**
 - buf1 at ebp-0x30, buf2 at ebp-0x1c (exactly 20 bytes apart — adjacent in memory)
 - Calls p() twice: fills buf1 and buf2 with 20 bytes each (no null terminator)
-- `strcpy(output, buf1)`: buf1 has no null → reads through buf2 (also no null) → hits saved_ebx (0xb7fd0ff4, no nulls) → stops at saved_edi (0x00000000)
+- `strcpy(output, buf1)`: buf1 has no null -> reads through buf2 (also no null) -> hits saved_ebx (0xb7fd0ff4, no nulls) -> stops at saved_edi (0x00000000)
   - Copies 44 bytes to output
 - Appends " " at output[44]
-- `strcat(output, buf2)`: buf2 has no null → reads through saved_ebx → appends 24 bytes starting at output[45]
+- `strcat(output, buf2)`: buf2 has no null -> reads through saved_ebx -> appends 24 bytes starting at output[45]
 - Total written: 69 bytes
 
 **main():**

@@ -1,5 +1,5 @@
 ## Level 8 - Heap Buffer Overflow
-Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes → heap overflow. Condition checks *(auth + 0x20) != 0 for shell access.
+Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes -> heap overflow. Condition checks *(auth + 0x20) != 0 for shell access.
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -19,12 +19,12 @@ No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RU
 
 ### Exploitation Strategy
 **Heap Layout:**
-1. Allocate service s1 → 0x804a008
-2. Allocate service s2 → 0x804a018
-3. Allocate service s3 → 0x804a028
-4. Allocate auth with 29-byte password → 0x804a038
+1. Allocate service s1 -> 0x804a008
+2. Allocate service s2 -> 0x804a018
+3. Allocate service s3 -> 0x804a028
+4. Allocate auth with 29-byte password -> 0x804a038
 - auth + 0x20 = 0x804a038 + 32 = 0x804a058
-- Points into service s3 data (non-zero!) → condition TRUE → shell spawns
+- Points into service s3 data (non-zero!) -> condition TRUE -> shell spawns
 
 
 ### Key Insights

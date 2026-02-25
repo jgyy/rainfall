@@ -24,8 +24,8 @@ int main(int argc, char **argv) {
     ret = (***six)(six, five);     // HIJACK HERE
 }
 ```
-- Uninitialized str pointer → garbage address
-- strlen(input) with no limit → arbitrary write
+- Uninitialized str pointer -> garbage address
+- strlen(input) with no limit -> arbitrary write
 - (***six) dereferences six's first member as function
 
 ### Exploitation
