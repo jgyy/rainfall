@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
+// ./level0 423
+// $ cat /home/user/level1/.pass
 int main(int argc, char **argv)
 {
     int  n;

