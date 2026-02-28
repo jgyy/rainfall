@@ -1,6 +1,5 @@
 ## Level3 - Format String Vulnerability
-User input passed directly to printf() enables arbitra- `%n` - Write to pointer on stack
-- `%hn` - Write 2 bytes instead of 4
+Format string — input passed directly to printf(), use %4$n to write 0x40 to a global variable and trigger the password print
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -19,6 +18,14 @@ No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RU
 - Can write arbitrary values via %n
 - No ASLR or canaries in this binary
 - Completely preventable with printf("%s\n", buffer)
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
 
 ### Exploitation
 **Leak stack values:**

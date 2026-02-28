@@ -1,5 +1,5 @@
 ## Level 5 - Format String Vulnerability (GOT Overwrite)
-Binary contains a format string vulnerability in `printf()` that allows arbitrary memory writes via GOT overwrite. The binary reads user input with `fgets()` and passes it directly to `printf()` without a format string.
+Format string GOT overwrite — overwrite exit@GOT with address of function o() (0x080484a4) so exit() jumps to it
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -58,36 +58,21 @@ No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RU
    - A shell is spawned with level6 privileges (binary is setuid level6)
    - You can now execute commands and read level6's password file
 
-### Binary Function Analysis
-
-**Function n() Assembly:**
-```
-080484c2 <n>:
-  080484c2:  55              push   %ebp
-  080484c3:  89 e5           mov    %esp,%ebp
-  080484c5:  83 ec 18 02     sub    $0x218,%esp
-  ...
-  080484e5:  e8 b6 fe ff ff  call   80483a0 <fgets@plt>      ; Read input
-  080484f3:  e8 88 fe ff ff  call   8048380 <printf@plt>      ; VULNERABLE!
-  080484ff:  e8 8c fe ff ff  call   80483d0 <exit@plt>        ; HIJACKED!
-```
-
-**Function o() Assembly:**
-```
-080484a4 <o>:
-  080484a4:  55              push   %ebp
-  080484a7:  83 ec 18        sub    $0x18,%esp
-  080484aa:  c7 04 24 f0 85  movl   $0x80485f0,(%esp)         ; "/bin/sh" address
-  080484b1:  e8 fa fe ff ff  call   80483b0 <system@plt>      ; system("/bin/sh")
-  080484b6:  c7 04 24 01 00  movl   $0x1,(%esp)
-  080484bd:  e8 ce fe ff ff  call   8048390 <_exit@plt>
-```
-
 ### Technical Notes
 - **ASLR:** Disabled on this system, allowing hardcoded addresses
 - **Setuid:** Binary runs as level6, so spawned shell has level6 privileges
 - **Format String Type:** Uses %d (read) and %n (write) specifiers
 - **GOT Overwrite:** Overwrites function pointer in Global Offset Table
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
+GOT    Global Offset Table                 A table in ELF binaries that holds runtime addresses of dynamically linked functions; exit@GOT is overwritten here to redirect execution to o()
+PLT    Procedure Linkage Table             A stub table that works with the GOT to resolve and call external library functions at runtime via lazy binding
 
 ### Working Manual Command
 

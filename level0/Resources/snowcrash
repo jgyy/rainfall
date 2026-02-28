@@ -8,9 +8,3 @@ Level 06: Exploit PHP's preg_replace with /e flag to execute arbitrary code
 Level 07: Modify LOGNAME environment variable to inject shell commands into system() call
 Level 08: Bypass string filtering using symlinks to access protected files
 Level 09: Reverse-engineer and break a byte rotation cipher
-Level 10: Exploit timing gap between access() and open() calls using symlink switching
-Level 11: Inject shell commands via io.popen() in Lua script
-Level 12: Use wildcards and backticks in Perl egrep to bypass input filtering
-Level 13: Use Ghidra to patch binary and bypass UID validation check
-Level 14: Use Ghidra to patch binary, bypass ptrace anti-debugging, and modify UID check
-

